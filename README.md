@@ -108,6 +108,9 @@ Snapshot state is written to `/data/edge/health/state.json`:
 }
 ```
 
+Schema: `schemas/edge.health.state.v1.0.json`
+Contract: `docs/edge.health.state.v1.0.md`
+
 ## Usage
 
 ```bash
@@ -159,11 +162,46 @@ edge-healthd -c /path/to/config.json
 - libsystemd (optional, for sd-bus/sd-journal)
 - sdbus-c++ 2.1.0+ (required, for D-Bus integrations; set `EDGE_FETCH_SDBUSCPP=ON` to fetch in non-Yocto builds)
 
+## Journal Permissions
+
+Reading the system journal requires appropriate permissions. `edge-healthd` attempts to open the journal in this order:
+
+- `SD_JOURNAL_SYSTEM` (system-wide journal — requires root or membership in the `systemd-journal` group)
+- `SD_JOURNAL_CURRENT_USER` (per-user journal — usable by the service user when the journal is available to that user)
+- `SD_JOURNAL_LOCAL_ONLY` (local-only fallback for systems without a persistent system journal)
+
+Recommendations for production deployments:
+
+- Prefer running `edge-healthd` as a system service and grant it journal read access by adding the `systemd-journal` group to the service's supplementary groups. Example snippet for the unit file:
+
+```ini
+[Service]
+User=edge-healthd
+SupplementaryGroups=systemd-journal
+```
+
+- Alternatively, add the `edge-healthd` runtime user to the `systemd-journal` group on the host:
+
+```bash
+sudo usermod -aG systemd-journal edge-healthd
+```
+
+- If the device runs without a system journal (volatile/ram journal or minimal images), the daemon will fall back to `SD_JOURNAL_LOCAL_ONLY` or the per-user journal if available.
+
+Security note: avoid shelling out to `journalctl` from the daemon — we use `sd_journal` for safer, parsed access.
+
+
 ## Testing
 
 ```bash
 cd build
 ctest --output-on-failure
+```
+
+Schema validation (uses `uv` with an inline dependency):
+
+```bash
+uv run validate_schema.py /data/edge/health/state.json
 ```
 
 ## Yocto Integration
