@@ -142,6 +142,7 @@ add_library(edge-snapshot-core STATIC
     src/config.cpp
     src/probes.cpp
     src/probes_dbus.cpp
+    src/journal.cpp
     src/aggregator.cpp
     src/writer.cpp
     src/json.cpp
@@ -221,6 +222,7 @@ if(EDGE_BUILD_TESTS)
         tests/test_aggregator.cpp
         tests/test_writer.cpp
         tests/test_json.cpp
+        tests/test_journal.cpp
     )
 
     target_link_libraries(edge-snapshot-tests
