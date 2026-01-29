@@ -1,0 +1,11 @@
+{
+  "state_dir": "/tmp/edge-healthd",
+  "snapshot_file": "/tmp/edge-healthd/state.json",
+  "monitored_interfaces": ["enp1s0", "wlp2s0"],
+  "monitored_services": ["ssh.socket", "NetworkManager.service"],
+  "log_excerpt": {
+    "max_lines": 20,
+    "min_priority": "info",
+    "window_sec": 0
+  }
+}

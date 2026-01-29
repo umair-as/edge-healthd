@@ -41,4 +41,10 @@
     "boot_fail_warn": 1,
     "boot_fail_crit": 3
   }
+  ,
+  "log_excerpt": {
+    "max_lines": 20,
+    "min_priority": "info",
+    "window_sec": 0
+  }
 }

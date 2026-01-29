@@ -104,6 +104,21 @@ struct Config {
     bool verbose = false;                               // Debug logging (CLI override)
 
     // ---------------------------------------------------------------------
+    // Log excerpt collection settings
+    // ---------------------------------------------------------------------
+    // How many lines to include per unit (default 20)
+    uint32_t log_excerpt_max_lines = 20;
+
+    // Minimum priority to include in excerpts. If not set, include all.
+    // Accepts syslog priority names ("emerg","alert","crit","err",
+    // "warning","notice","info","debug") when loaded from JSON.
+    std::optional<int> log_excerpt_min_priority; // 0 (emerg) .. 7 (debug)
+
+    // Time window (seconds) to include log messages from (rolling back from now).
+    // If not set, include all available messages.
+    std::optional<uint64_t> log_excerpt_window_sec;
+
+    // ---------------------------------------------------------------------
     // Factory methods
     // ---------------------------------------------------------------------
 
@@ -118,6 +133,9 @@ struct Config {
 
     /// Validate configuration, return error message if invalid
     [[nodiscard]] std::optional<std::string> validate() const;
+
+    /// Serialize configuration to JSON for diagnostics.
+    [[nodiscard]] std::string to_json_string(int indent = 2) const;
 };
 
 // -----------------------------------------------------------------------------

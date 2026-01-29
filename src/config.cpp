@@ -21,6 +21,22 @@ std::string normalize_log_level(const std::string& level) {
 bool is_valid_log_level(const std::string& level) {
     return level == "debug" || level == "info" || level == "warn" || level == "error";
 }
+
+// Map syslog priority name to numeric value (0..7). Returns -1 on unknown.
+int priority_from_string(const std::string& p) {
+    std::string s;
+    s.reserve(p.size());
+    for (char ch : p) s.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    if (s == "emerg" || s == "panic") return 0;
+    if (s == "alert") return 1;
+    if (s == "crit" || s == "critical") return 2;
+    if (s == "err" || s == "error") return 3;
+    if (s == "warning" || s == "warn") return 4;
+    if (s == "notice") return 5;
+    if (s == "info" || s == "informational") return 6;
+    if (s == "debug") return 7;
+    return -1;
+}
 } // namespace
 
 namespace edge {
@@ -90,6 +106,26 @@ Config Config::load(const std::filesystem::path& path) {
     if (json.contains("dbus_timeout_ms")) {
         config.dbus_timeout = std::chrono::milliseconds(
             json["dbus_timeout_ms"].get<int>());
+    }
+
+    // Log excerpt options
+    if (json.contains("log_excerpt")) {
+        auto& le = json["log_excerpt"];
+        if (le.contains("max_lines")) {
+            config.log_excerpt_max_lines = le["max_lines"].get<uint32_t>();
+        }
+        if (le.contains("min_priority")) {
+            if (le["min_priority"].is_string()) {
+                int v = priority_from_string(le["min_priority"].get<std::string>());
+                if (v >= 0) config.log_excerpt_min_priority = v;
+            } else if (le["min_priority"].is_number_integer()) {
+                int v = le["min_priority"].get<int>();
+                if (v >= 0 && v <= 7) config.log_excerpt_min_priority = v;
+            }
+        }
+        if (le.contains("window_sec")) {
+            config.log_excerpt_window_sec = le["window_sec"].get<uint64_t>();
+        }
     }
 
     // Thresholds
@@ -164,6 +200,10 @@ std::optional<std::string> Config::validate() const {
         return "dbus_timeout_ms must be at least 1";
     }
 
+    if (log_excerpt_max_lines == 0 || log_excerpt_max_lines > 1000) {
+        return "log_excerpt.max_lines must be between 1 and 1000";
+    }
+
     if (thresholds.cpu_load_warn >= thresholds.cpu_load_crit) {
         return "cpu_load_warn must be less than cpu_load_crit";
     }
@@ -181,6 +221,59 @@ std::optional<std::string> Config::validate() const {
     }
 
     return std::nullopt;
+}
+
+std::string Config::to_json_string(int indent) const {
+    nlohmann::json json;
+
+    // Identity
+    json["device_id"] = device_id;
+    json["platform"] = platform;
+
+    // Paths
+    json["snapshot_file"] = snapshot_file.string();
+    json["state_dir"] = state_dir.string();
+
+    // Collection settings
+    json["collect_interval_sec"] = collect_interval.count();
+    json["sample_window_sec"] = sample_window_sec;
+
+    // Runtime options (file-visible)
+    json["log_level"] = log_level;
+    json["dbus_timeout_ms"] = dbus_timeout.count();
+
+    // Monitored items
+    json["monitored_services"] = monitored_services;
+    json["monitored_mounts"] = monitored_mounts;
+    json["monitored_interfaces"] = monitored_interfaces;
+
+    // Feature flags
+    json["enable_ntp"] = enable_ntp;
+    json["enable_thermal"] = enable_thermal;
+    json["enable_update_tracking"] = enable_update_tracking;
+
+    // Thresholds
+    auto& t = json["thresholds"];
+    t["cpu_load_warn"] = thresholds.cpu_load_warn;
+    t["cpu_load_crit"] = thresholds.cpu_load_crit;
+    t["mem_used_warn"] = thresholds.mem_used_warn;
+    t["mem_used_crit"] = thresholds.mem_used_crit;
+    t["disk_used_warn"] = thresholds.disk_used_warn;
+    t["disk_used_crit"] = thresholds.disk_used_crit;
+    t["temp_warn_c"] = thresholds.temp_warn_c;
+    t["temp_crit_c"] = thresholds.temp_crit_c;
+    t["service_restart_warn"] = thresholds.service_restart_warn;
+    t["service_restart_crit"] = thresholds.service_restart_crit;
+    t["boot_fail_warn"] = thresholds.boot_fail_warn;
+    t["boot_fail_crit"] = thresholds.boot_fail_crit;
+
+    // Log excerpt settings
+    auto& le = json["log_excerpt"];
+    le["max_lines"] = log_excerpt_max_lines;
+    if (log_excerpt_min_priority) le["min_priority"] = *log_excerpt_min_priority;
+    if (log_excerpt_window_sec) le["window_sec"] = *log_excerpt_window_sec;
+
+    return json.dump(indent);
 }
 
 } // namespace edge
