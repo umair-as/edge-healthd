@@ -29,6 +29,8 @@ enum class ServiceState {
 
 enum class LinkState { Up, Down, Unknown };
 
+enum class Duplex { Full, Half, Unknown };
+
 enum class TimeSyncSource { None, Ntp, Ptp };
 
 enum class TimeSyncState { Locked, FreeRunning, Holdover, Unknown };
@@ -98,22 +100,31 @@ enum class UpdateResult { Success, Failed, Unknown };
     return "unknown";
 }
 
+[[nodiscard]] constexpr std::string_view to_string(Duplex d) noexcept {
+    switch (d) {
+        case Duplex::Full:    return "full";
+        case Duplex::Half:    return "half";
+        case Duplex::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
 // -----------------------------------------------------------------------------
 // Data structures (leaf types first, composites later)
 // -----------------------------------------------------------------------------
 
 struct OsInfo {
-    std::string distro;
-    std::string version;
-    std::string build_id;
-    std::string kernel;
+    std::string distro = "unknown";
+    std::string version ="";
+    std::string build_id=  "";
+    std::string kernel  = "unknown";
 };
 
 struct DeviceInfo {
-    std::string device_id;
-    std::string hostname;
-    std::string platform;      // e.g., "visionfive2", "rpi5", "imx93"
-    std::string arch;          // e.g., "riscv64", "aarch64"
+    std::string device_id = "unknown";
+    std::string hostname = "unknown";
+    std::string platform = "unknown";      // e.g., "visionfive2", "rpi5", "imx93"
+    std::string arch = "uknown";         // e.g., "riscv64", "aarch64"
     OsInfo os;
 };
 
@@ -134,6 +145,7 @@ struct ServiceUnit {
     uint32_t restart_count = 0;
     std::optional<std::string> result;
     std::optional<std::string> detail;
+    std::vector<std::string> log_excerpt; // max 20 entries, each <= 512 chars
 };
 
 struct ServicesStatus {
@@ -168,9 +180,30 @@ struct ThermalSensor {
 struct NetworkInterface {
     std::string ifname;
     LinkState link = LinkState::Unknown;
+    bool carrier = false;  // Changed from std::optional<bool> to bool
     std::optional<std::string> ip;
+    
+    // Statistics
+    uint64_t rx_bytes = 0;
+    uint64_t tx_bytes = 0;
+    uint64_t rx_packets = 0;
+    uint64_t tx_packets = 0;
+    uint64_t rx_dropped = 0;
+    uint64_t tx_dropped = 0;
     uint64_t rx_err = 0;
     uint64_t tx_err = 0;
+    
+    // Link metadata (from IFLA_* — always available via netlink)
+    uint32_t mtu = 0;
+    std::string mac;            // "aa:bb:cc:dd:ee:ff"
+    std::string operstate;      // "up", "down", "unknown", etc.
+    uint32_t carrier_changes = 0;
+    uint32_t carrier_up_count = 0;
+    uint32_t carrier_down_count = 0;
+
+    // Hardware info (from Ethtool Netlink — may not be available)
+    std::optional<uint32_t> speed_mbps;
+    std::optional<Duplex> duplex;
 };
 
 struct ResourcesStatus {
@@ -188,10 +221,20 @@ struct NtpStatus {
     std::optional<std::chrono::system_clock::time_point> last_sync_at;
 };
 
+struct PtpStatus {
+    bool enabled = false;
+    std::optional<std::string> interface;
+    std::optional<int64_t> offset_ns;
+    std::optional<uint64_t> rms_ns;
+    std::optional<TimeSyncState> state;
+    std::optional<std::chrono::system_clock::time_point> last_sync_at;
+    std::optional<std::string> role; // keep as string for v1
+};
 struct TimeSyncStatus {
     Severity overall = Severity::Unknown;
     TimeSyncSource source = TimeSyncSource::None;
     NtpStatus ntp;
+    PtpStatus ptp;
 };
 
 struct LastUpdate {
@@ -209,7 +252,7 @@ struct UpdateStatus {
 
 struct SnapshotSummary {
     Severity severity = Severity::Unknown;
-    std::vector<std::string> reasons;
+    std::vector<std::string> reasons{"initial"};
     std::optional<std::string> notes;
 };
 
