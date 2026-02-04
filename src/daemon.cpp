@@ -2,6 +2,7 @@
 // edge-healthd: Daemon implementation
 
 #include "daemon.hpp"
+#include "netlink_monitor.hpp"
 
 #include <chrono>
 #include <csignal>
@@ -50,13 +51,26 @@ std::optional<std::string> SnapshotDaemon::initialize() {
         return "Failed to create state directory: " + ec.message();
     }
 
+    // Initialize NetlinkMonitor first
+    nl_monitor_ = std::make_unique<NetlinkMonitor>();
+    if (!nl_monitor_->init()) {
+        return "Failed to initialize NetlinkMonitor";
+    }
+
     // Initialize probes
     device_probe_ = std::make_unique<DeviceProbe>(config_);
     boot_probe_ = std::make_unique<BootProbe>(config_, config_.state_dir);
     services_probe_ = std::make_unique<ServicesProbe>(
         config_, config_.monitored_services);
+    
+    // FIX: Pass NetlinkMonitor instance to ResourcesProbe
     resources_probe_ = std::make_unique<ResourcesProbe>(
-        config_, config_.monitored_mounts, config_.monitored_interfaces);
+        config_, 
+        *nl_monitor_,  // Pass NetlinkMonitor instance
+        std::span<const std::string>(config_.monitored_mounts), 
+        std::span<const std::string>(config_.monitored_interfaces)
+    );
+    
     time_sync_probe_ = std::make_unique<TimeSyncProbe>(config_);
     update_probe_ = std::make_unique<UpdateProbe>(config_);
 
@@ -165,7 +179,7 @@ void SnapshotDaemon::collection_cycle() {
 
     // Write to file
     if (auto result = writer_->write(state); !result) {
-        log::error("Failed to write snapshot: " + result.error().message);
+        log::writer_error("Failed to write snapshot: " + result.error().message);
     }
 
     // Update current state

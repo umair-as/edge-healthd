@@ -16,6 +16,8 @@ std::string format_time(const std::chrono::system_clock::time_point& tp) {
     std::tm tm{};
     gmtime_r(&time_t, &tm);
 
+    // fix the time is missing milliseconds for RFC 3339 compliance
+
     std::ostringstream oss;
     oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
     return oss.str();
@@ -73,6 +75,9 @@ void to_json(nlohmann::json& j, const ServiceUnit& unit) {
     if (unit.detail) {
         j["detail"] = *unit.detail;
     }
+    if (!unit.log_excerpt.empty()) {
+        j["log_excerpt"] = unit.log_excerpt;
+    }
 }
 
 void to_json(nlohmann::json& j, const ServicesStatus& services) {
@@ -118,12 +123,48 @@ void to_json(nlohmann::json& j, const NetworkInterface& iface) {
     j = nlohmann::json{
         {"ifname", iface.ifname},
         {"link", std::string(edge::to_string(iface.link))},
+        {"rx_bytes", iface.rx_bytes},
+        {"tx_bytes", iface.tx_bytes},
+        {"rx_packets", iface.rx_packets},
+        {"tx_packets", iface.tx_packets},
+        {"rx_dropped", iface.rx_dropped},
+        {"tx_dropped", iface.tx_dropped},
         {"rx_err", iface.rx_err},
         {"tx_err", iface.tx_err}
     };
 
     if (iface.ip) {
         j["ip"] = *iface.ip;
+    }
+
+    j["carrier"] = iface.carrier;
+
+    // Link metadata (always available from IFLA_*)
+    if (iface.mtu > 0) {
+        j["mtu"] = iface.mtu;
+    }
+    if (!iface.mac.empty()) {
+        j["mac"] = iface.mac;
+    }
+    if (!iface.operstate.empty()) {
+        j["operstate"] = iface.operstate;
+    }
+    if (iface.carrier_changes > 0) {
+        j["carrier_changes"] = iface.carrier_changes;
+    }
+    if (iface.carrier_up_count > 0) {
+        j["carrier_up_count"] = iface.carrier_up_count;
+    }
+    if (iface.carrier_down_count > 0) {
+        j["carrier_down_count"] = iface.carrier_down_count;
+    }
+
+    // Hardware metadata (Ethtool Netlink)
+    if (iface.speed_mbps) {
+        j["speed_mbps"] = *iface.speed_mbps;
+    }
+    if (iface.duplex) {
+        j["duplex"] = std::string(edge::to_string(*iface.duplex));
     }
 }
 
@@ -151,11 +192,35 @@ void to_json(nlohmann::json& j, const NtpStatus& ntp) {
     }
 }
 
+void to_json(nlohmann::json& j, const PtpStatus& ptp) {
+    j = nlohmann::json{{"enabled", ptp.enabled}};
+
+    if (ptp.interface) {
+        j["interface"] = *ptp.interface;
+    }
+    if (ptp.offset_ns) {
+        j["offset_ns"] = *ptp.offset_ns;
+    }
+    if (ptp.rms_ns) {
+        j["rms_ns"] = *ptp.rms_ns;
+    }
+    if (ptp.state) {
+        j["state"] = std::string(edge::to_string(*ptp.state));
+    }
+    if (ptp.last_sync_at) {
+        j["last_sync_at"] = format_time(*ptp.last_sync_at);
+    }
+    if (ptp.role) {
+        j["role"] = *ptp.role;
+    }
+}
+
 void to_json(nlohmann::json& j, const TimeSyncStatus& time_sync) {
     j = nlohmann::json{
         {"overall", std::string(edge::to_string(time_sync.overall))},
         {"source", std::string(edge::to_string(time_sync.source))},
-        {"ntp", time_sync.ntp}
+        {"ntp", time_sync.ntp},
+        {"ptp", time_sync.ptp}
     };
 }
 

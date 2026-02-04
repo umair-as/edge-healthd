@@ -79,11 +79,33 @@ TEST_CASE("JSON serialize ResourcesStatus", "[json]") {
     mount.avail_mb = 10000;
     resources.storage.push_back(mount);
 
+    NetworkInterface iface;
+    iface.ifname = "eth0";
+    iface.link = LinkState::Up;
+    iface.rx_bytes = 1200;
+    iface.tx_bytes = 900;
+    iface.rx_packets = 12;
+    iface.tx_packets = 9;
+    iface.rx_dropped = 1;
+    iface.tx_dropped = 2;
+    iface.rx_err = 3;
+    iface.tx_err = 4;
+    resources.network.push_back(iface);
+
     auto j = nlohmann::json(resources);
 
     CHECK(j["cpu"]["load1"] == 0.5);
     CHECK(j["memory"]["mem_total_mb"] == 4096);
     CHECK(j["storage"][0]["mount"] == "/");
+    CHECK(j["network"][0]["ifname"] == "eth0");
+    CHECK(j["network"][0]["rx_bytes"] == 1200);
+    CHECK(j["network"][0]["tx_bytes"] == 900);
+    CHECK(j["network"][0]["rx_packets"] == 12);
+    CHECK(j["network"][0]["tx_packets"] == 9);
+    CHECK(j["network"][0]["rx_dropped"] == 1);
+    CHECK(j["network"][0]["tx_dropped"] == 2);
+    CHECK(j["network"][0]["rx_err"] == 3);
+    CHECK(j["network"][0]["tx_err"] == 4);
 }
 
 TEST_CASE("JSON serialize full SnapshotState", "[json]") {

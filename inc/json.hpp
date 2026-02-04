@@ -22,6 +22,7 @@ void to_json(nlohmann::json& j, const ThermalSensor& sensor);
 void to_json(nlohmann::json& j, const NetworkInterface& iface);
 void to_json(nlohmann::json& j, const ResourcesStatus& resources);
 void to_json(nlohmann::json& j, const NtpStatus& ntp);
+void to_json(nlohmann::json& j, const PtpStatus& ptp);
 void to_json(nlohmann::json& j, const TimeSyncStatus& time_sync);
 void to_json(nlohmann::json& j, const LastUpdate& update);
 void to_json(nlohmann::json& j, const UpdateStatus& update);

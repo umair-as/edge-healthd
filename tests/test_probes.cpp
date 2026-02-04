@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "probes.hpp"
 #include "config.hpp"
+#include "netlink_monitor.hpp"
 
 using namespace edge;
 
@@ -46,7 +47,8 @@ TEST_CASE("ResourcesProbe reads system info", "[probes]") {
     config.monitored_mounts = {"/"};
     config.monitored_interfaces = {};
 
-    ResourcesProbe probe(config, config.monitored_mounts, config.monitored_interfaces);
+    NetlinkMonitor nl_monitor;
+    ResourcesProbe probe(config, nl_monitor, config.monitored_mounts, config.monitored_interfaces);
 
     auto result = probe.collect();
     REQUIRE(result.has_value());

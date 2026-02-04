@@ -3,8 +3,10 @@
 
 #include "probes.hpp"
 #include "config.hpp"
+#include "netlink_monitor.hpp"
 
 #include <nlohmann/json.hpp>
+#include <unordered_map>
 
 #include <cctype>
 #include <cerrno>
@@ -17,11 +19,8 @@
 #include <string_view>
 
 #include <dirent.h>
-#include <ifaddrs.h>
 #include <linux/magic.h>
 #include <net/if.h>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/statfs.h>
@@ -332,31 +331,18 @@ bool is_safe_ifname(std::string_view name) {
     return true;
 }
 
-std::optional<std::string> get_ipv4_for_interface(const std::string& ifname) {
-    struct ifaddrs* ifaddr = nullptr;
-    if (getifaddrs(&ifaddr) != 0) {
-        return std::nullopt;
+// Convert IF_OPER_* code to schema string (matches IFLA_OPERSTATE values)
+std::string_view operstate_to_string(uint8_t state) {
+    switch (state) {
+        case 0: return "unknown";       // IF_OPER_UNKNOWN
+        case 1: return "notpresent";    // IF_OPER_NOTPRESENT
+        case 2: return "down";          // IF_OPER_DOWN
+        case 3: return "lowerlayerdown";// IF_OPER_LOWERLAYERDOWN
+        case 4: return "testing";       // IF_OPER_TESTING
+        case 5: return "dormant";       // IF_OPER_DORMANT
+        case 6: return "up";            // IF_OPER_UP
+        default: return "unknown";
     }
-
-    std::optional<std::string> result;
-    for (auto* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
-            continue;
-        }
-        if (ifname != ifa->ifa_name) {
-            continue;
-        }
-        char host[NI_MAXHOST];
-        if (getnameinfo(ifa->ifa_addr, sizeof(sockaddr_in),
-                        host, sizeof(host),
-                        nullptr, 0, NI_NUMERICHOST) == 0) {
-            result = host;
-            break;
-        }
-    }
-
-    freeifaddrs(ifaddr);
-    return result;
 }
 
 std::string fs_type_to_string(long type) {
@@ -372,31 +358,15 @@ std::string fs_type_to_string(long type) {
     }
 }
 
-LinkState link_state_from_flags(const std::string& ifname) {
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) {
-        return LinkState::Unknown;
-    }
 
-    struct ifreq ifr{};
-    std::snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", ifname.c_str());
-    if (ioctl(fd, SIOCGIFFLAGS, &ifr) != 0) {
-        close(fd);
-        return LinkState::Unknown;
-    }
-    close(fd);
-
-    if (ifr.ifr_flags & IFF_UP) {
-        return LinkState::Up;
-    }
-    return LinkState::Down;
-}
 } // namespace
 
 ResourcesProbe::ResourcesProbe(const Config& config,
+                                     const NetlinkMonitor& nl_monitor,
                                        std::span<const std::string> monitored_mounts,
                                        std::span<const std::string> monitored_interfaces)
     : config_(config)
+    , nl_monitor_(nl_monitor) 
     , monitored_mounts_(monitored_mounts.begin(), monitored_mounts.end())
     , monitored_interfaces_(monitored_interfaces.begin(), monitored_interfaces.end()) {
 
@@ -544,9 +514,18 @@ std::vector<ThermalSensor> ResourcesProbe::collect_thermal() const {
     closedir(dir);
     return sensors;
 }
-
 std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
     std::vector<NetworkInterface> interfaces;
+
+    // 1. Access the live cache from the persistent monitor
+    // No more socket opening/closing or kernel dumps here!
+    auto nl_stats = nl_monitor_.get_all_stats();
+    
+    // 2. Build a map for quick lookup by interface name
+    std::unordered_map<std::string, const NetlinkInterfaceStats*> nl_map;
+    for (const auto& stats : nl_stats) {
+        nl_map[stats.name] = &stats;
+    }
 
     for (const auto& ifname : monitored_interfaces_) {
         NetworkInterface iface;
@@ -558,23 +537,40 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
             continue;
         }
 
-        iface.link = link_state_from_flags(ifname);
+        // 3. Populate data from the Netlink Monitor cache
+        auto it = nl_map.find(ifname);
+        if (it != nl_map.end()) {
+            const auto* nl = it->second;
+            
+            // Map state
+            iface.link = nl->running ? LinkState::Up : LinkState::Down;
+            iface.carrier = nl->carrier_up;
+            
+            // Map 64-bit stats
+            iface.rx_bytes = nl->rx_bytes;
+            iface.tx_bytes = nl->tx_bytes;
+            iface.rx_packets = nl->rx_packets;
+            iface.tx_packets = nl->tx_packets;
+            iface.rx_dropped = nl->rx_dropped;
+            iface.tx_dropped = nl->tx_dropped;
+            iface.rx_err = nl->rx_errors;
+            iface.tx_err = nl->tx_errors;
 
-        // Read error counters from /sys/class/net/<if>/statistics/
-        std::string rx_err_path = "/sys/class/net/" + ifname + "/statistics/rx_errors";
-        std::ifstream rx_err_file(rx_err_path);
-        if (rx_err_file) {
-            rx_err_file >> iface.rx_err;
+            // Map link metadata (free from IFLA_* — already in RTM_GETLINK messages)
+            iface.mtu = nl->mtu;
+            iface.mac = nl->mac;
+            iface.operstate = std::string(operstate_to_string(nl->operstate));
+            iface.carrier_changes = nl->carrier_changes;
+            iface.carrier_up_count = nl->carrier_up_count;
+            iface.carrier_down_count = nl->carrier_down_count;
+
         }
+        // Note: We removed the ioctl fallback because the persistent Netlink
+        // monitor is more reliable and handles state changes via multicast.
 
-        std::string tx_err_path = "/sys/class/net/" + ifname + "/statistics/tx_errors";
-        std::ifstream tx_err_file(tx_err_path);
-        if (tx_err_file) {
-            tx_err_file >> iface.tx_err;
-        }
-
-        if (auto ip = get_ipv4_for_interface(ifname)) {
-            iface.ip = *ip;
+        // 4. Get IPv4 address from netlink cache (zero syscalls)
+        if (it != nl_map.end() && it->second->ipv4_addr) {
+            iface.ip = *it->second->ipv4_addr;
         }
 
         interfaces.push_back(std::move(iface));
@@ -582,7 +578,6 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
 
     return interfaces;
 }
-
 // -----------------------------------------------------------------------------
 // UpdateProbe
 // -----------------------------------------------------------------------------
