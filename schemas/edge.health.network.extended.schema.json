@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edge.example/schemas/edge.health.network.extended.schema.json",
+  "title": "edge.health.network.extended v2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "description": "Where extended fields came from",
+      "anyOf": [
+        { "type": "null" },
+        { "enum": ["rtnl", "ethtool-nl", "netfilter", "mixed"] }
+      ]
+    },
+
+    "ifindex": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+    "mtu": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+
+    "flags": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "up": { "anyOf": [{ "type": "null" }, { "type": "boolean" }] },
+            "running": { "anyOf": [{ "type": "null" }, { "type": "boolean" }] },
+            "lower_up": { "anyOf": [{ "type": "null" }, { "type": "boolean" }] },
+            "promisc": { "anyOf": [{ "type": "null" }, { "type": "boolean" }] },
+            "multicast": { "anyOf": [{ "type": "null" }, { "type": "boolean" }] }
+          }
+        }
+      ]
+    },
+
+    "operstate": {
+      "description": "Stringified IF_OPER_* (from IFLA_OPERSTATE).",
+      "anyOf": [
+        { "type": "null" },
+        {
+          "enum": [
+            "unknown",
+            "notpresent",
+            "down",
+            "lowerlayerdown",
+            "testing",
+            "dormant",
+            "up"
+          ]
+        }
+      ]
+    },
+    "operstate_code": {
+      "description": "Raw IFLA_OPERSTATE value (optional).",
+      "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }]
+    },
+
+    "qdisc": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+    "tx_qlen": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+
+    "mac": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+    "perm_mac": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+
+    "carrier_changes": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+    "carrier_up_count": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+    "carrier_down_count": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+
+    "stats64": {
+      "description": "Optional expansion beyond the base counters; keep base always populated.",
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "collisions": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "rx_length_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "rx_over_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "rx_crc_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "rx_frame_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "rx_fifo_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "rx_missed_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+
+            "tx_aborted_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "tx_carrier_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "tx_fifo_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "tx_heartbeat_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "tx_window_errors": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] }
+          }
+        }
+      ],
+      "default": null
+    },
+
+    "ethtool": {
+      "description": "Optional ethtool-netlink derived fields (speed/duplex already exist in base, but can be enriched here).",
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "edge.health.network.ethtool.schema.json" }
+      ],
+      "default": null
+    },
+
+    "netfilter": {
+      "description": "Optional per-interface packet filtering counters/summary.",
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "edge.health.netfilter.schema.json" }
+      ],
+      "default": null
+    }
+  }
+}
+

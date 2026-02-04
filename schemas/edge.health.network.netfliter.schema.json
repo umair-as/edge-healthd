@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edge.example/schemas/edge.health.netfilter.schema.json",
+  "title": "edge.health.netfilter v2",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "backend": { "anyOf": [{ "type": "null" }, { "enum": ["nftables", "iptables", "unknown"] }] },
+
+    "counters": {
+      "description": "Optional high-level counters. Exact semantics depend on implementation phase.",
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dropped_packets": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "dropped_bytes": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "accepted_packets": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+            "accepted_bytes": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] }
+          }
+        }
+      ],
+      "default": null
+    },
+
+    "notes": { "anyOf": [{ "type": "null" }, { "type": "string" }] }
+  }
+}
+

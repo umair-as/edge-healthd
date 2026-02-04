@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edge.example/schemas/edge.health.network.base.schema.json",
+  "title": "edge.health.network.base v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ifname",
+    "link",
+    "rx_bytes",
+    "tx_bytes",
+    "rx_packets",
+    "tx_packets",
+    "rx_err",
+    "tx_err",
+    "rx_dropped",
+    "tx_dropped"
+  ],
+  "properties": {
+    "ifname": { "type": "string", "minLength": 1 },
+
+    "link": { "enum": ["up", "down", "unknown"] },
+    "carrier": { "anyOf": [{ "type": "null" }, { "type": "boolean" }] },
+
+    "ip": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
+
+    "rx_bytes": { "type": "integer", "minimum": 0 },
+    "tx_bytes": { "type": "integer", "minimum": 0 },
+    "rx_packets": { "type": "integer", "minimum": 0 },
+    "tx_packets": { "type": "integer", "minimum": 0 },
+    "rx_err": { "type": "integer", "minimum": 0 },
+    "tx_err": { "type": "integer", "minimum": 0 },
+    "rx_dropped": { "type": "integer", "minimum": 0 },
+    "tx_dropped": { "type": "integer", "minimum": 0 },
+
+    "speed_mbps": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+    "duplex": { "anyOf": [{ "type": "null" }, { "enum": ["unknown", "half", "full"] }] },
+
+    "extended": {
+      "description": "Optional extended fields (netlink/ethtool/netfilter). Safe to omit.",
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "edge.health.network.extended.schema.json" }
+      ],
+      "default": null
+    }
+  }
+}
+
