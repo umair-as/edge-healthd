@@ -21,7 +21,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Build Options
 # -----------------------------------------------------------------------------
 
-option(EDGE_BUILD_TESTS "Build unit tests" ON)
+option(EDGE_BUILD_TESTS "Build unit tests" OFF)
 option(EDGE_ENABLE_SANITIZERS "Enable ASan + UBSan (Debug builds)" OFF)
 option(EDGE_ENABLE_LTO "Enable Link-Time Optimization (Release builds)" ON)
 option(EDGE_FETCH_SDBUSCPP "Fetch sdbus-c++ if not found" OFF)
@@ -93,7 +93,8 @@ endif()
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
     pkg_check_modules(SYSTEMD IMPORTED_TARGET libsystemd)
-    pkg_check_modules(SDBUSCPP IMPORTED_TARGET sdbus-c++>=2.1.0)
+    pkg_check_modules(LIBMNL IMPORTED_TARGET libmnl)
+    pkg_check_modules(SDBUSCPP IMPORTED_TARGET sdbus-c++>=2.0.0)
 endif()
 
 if(SYSTEMD_FOUND)
@@ -104,17 +105,25 @@ else()
     set(EDGE_HAS_SYSTEMD FALSE)
 endif()
 
+if(LIBMNL_FOUND)
+    message(STATUS "libmnl found: ${LIBMNL_VERSION}")
+    set(EDGE_HAS_LIBMNL TRUE)
+else()
+    message(STATUS "libmnl not found, sdbus-c++ may not build")
+    set(EDGE_HAS_LIBMNL FALSE)
+endif()
+
 set(SDBUSCPP_TARGET "")
 if(SDBUSCPP_FOUND)
     set(SDBUSCPP_TARGET PkgConfig::SDBUSCPP)
     message(STATUS "sdbus-c++ found: ${SDBUSCPP_VERSION}")
 elseif(EDGE_FETCH_SDBUSCPP)
-    message(STATUS "sdbus-c++ not found; fetching v2.1.0")
+    message(STATUS "sdbus-c++ not found; fetching v2.0.0")
     include(FetchContent)
     FetchContent_Declare(
         sdbus_cpp
         GIT_REPOSITORY https://github.com/Kistler-Group/sdbus-cpp.git
-        GIT_TAG v2.1.0
+        GIT_TAG v2.0.0
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(sdbus_cpp)
@@ -131,7 +140,7 @@ elseif(EDGE_FETCH_SDBUSCPP)
         message(FATAL_ERROR "sdbus-c++ fetched but no known target found")
     endif()
 else()
-    message(FATAL_ERROR "sdbus-c++ >= 2.1.0 not found (set EDGE_FETCH_SDBUSCPP=ON to fetch)")
+    message(FATAL_ERROR "sdbus-c++ >= 2.0.0 not found (set EDGE_FETCH_SDBUSCPP=ON to fetch)")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -143,6 +152,7 @@ add_library(edge-snapshot-core STATIC
     src/probes.cpp
     src/probes_dbus.cpp
     src/journal.cpp
+    src/netlink_monitor.cpp
     src/aggregator.cpp
     src/writer.cpp
     src/json.cpp
@@ -172,6 +182,10 @@ if(EDGE_HAS_SYSTEMD)
     target_compile_definitions(edge-snapshot-core PUBLIC EDGE_HAS_SYSTEMD=1)
 endif()
 
+if(EDGE_HAS_LIBMNL)
+    target_link_libraries(edge-snapshot-core PUBLIC PkgConfig::LIBMNL)
+    target_compile_definitions(edge-snapshot-core PUBLIC EDGE_HAS_LIBMNL=1)
+endif()
 # -----------------------------------------------------------------------------
 # Executable: edge-healthd
 # -----------------------------------------------------------------------------
