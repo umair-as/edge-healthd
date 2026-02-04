@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <mutex>
@@ -52,6 +53,35 @@ namespace detail {
 
 inline std::atomic<Level> g_level{Level::Info};
 inline std::mutex g_mutex;
+inline std::mutex g_rate_mutex;
+
+inline constexpr auto k_probe_error_interval = std::chrono::seconds(60);
+inline constexpr auto k_snapshot_interval = std::chrono::minutes(5);
+inline constexpr auto k_writer_error_interval = std::chrono::seconds(60);
+
+struct RateLimiter {
+    std::chrono::steady_clock::time_point last =
+        std::chrono::steady_clock::time_point::min();
+    uint32_t suppressed = 0;
+};
+
+inline bool allow_rate_limited(RateLimiter& limiter,
+                               std::chrono::steady_clock::duration interval,
+                               uint32_t* suppressed_out) {
+    const auto now = std::chrono::steady_clock::now();
+    if (limiter.last == std::chrono::steady_clock::time_point::min() ||
+        now - limiter.last >= interval) {
+        if (suppressed_out) {
+            *suppressed_out = limiter.suppressed;
+        }
+        limiter.suppressed = 0;
+        limiter.last = now;
+        return true;
+    }
+
+    limiter.suppressed++;
+    return false;
+}
 
 // Format current time as ISO 8601
 inline std::string format_timestamp() {
@@ -83,6 +113,15 @@ inline int level_to_priority(Level level) noexcept {
 }
 #endif
 
+inline std::string format_field(std::string_view key, std::string_view value) {
+    std::string field;
+    field.reserve(key.size() + 1 + value.size());
+    field.append(key);
+    field.push_back('=');
+    field.append(value);
+    return field;
+}
+
 inline void write_message(Level level, std::string_view msg) {
     std::lock_guard lock(g_mutex);
 
@@ -107,26 +146,22 @@ inline void write_structured(Level level, std::string_view msg,
     std::lock_guard lock(g_mutex);
 
 #ifdef EDGE_HAS_SYSTEMD
+    auto field1 = format_field(key1, val1);
     if (key2.empty()) {
         sd_journal_send(
             "MESSAGE=%.*s", static_cast<int>(msg.size()), msg.data(),
             "PRIORITY=%d", level_to_priority(level),
             "SYSLOG_IDENTIFIER=edge-healthd",
-            "%.*s=%.*s",
-            static_cast<int>(key1.size()), key1.data(),
-            static_cast<int>(val1.size()), val1.data(),
+            "%s", field1.c_str(),
             nullptr);
     } else {
+        auto field2 = format_field(key2, val2);
         sd_journal_send(
             "MESSAGE=%.*s", static_cast<int>(msg.size()), msg.data(),
             "PRIORITY=%d", level_to_priority(level),
             "SYSLOG_IDENTIFIER=edge-healthd",
-            "%.*s=%.*s",
-            static_cast<int>(key1.size()), key1.data(),
-            static_cast<int>(val1.size()), val1.data(),
-            "%.*s=%.*s",
-            static_cast<int>(key2.size()), key2.data(),
-            static_cast<int>(val2.size()), val2.data(),
+            "%s", field1.c_str(),
+            "%s", field2.c_str(),
             nullptr);
     }
 #else
@@ -200,16 +235,96 @@ inline void error(std::string_view msg) {
 
 inline void snapshot_collected(std::string_view severity) {
     if (should_log(Level::Info)) {
-        detail::write_structured(Level::Info, "Snapshot collected",
-                                 "SEVERITY", severity);
+        static std::string last_severity;
+        static auto last_log = std::chrono::steady_clock::time_point::min();
+        bool allow = false;
+
+        {
+            std::lock_guard lock(detail::g_rate_mutex);
+            const auto now = std::chrono::steady_clock::now();
+            if (last_severity != severity) {
+                last_severity.assign(severity.data(), severity.size());
+                last_log = now;
+                allow = true;
+            } else if (last_log == std::chrono::steady_clock::time_point::min() ||
+                       now - last_log >= detail::k_snapshot_interval) {
+                last_log = now;
+                allow = true;
+            }
+        }
+
+        if (allow) {
+            detail::write_structured(Level::Info, "Snapshot collected",
+                                     "SEVERITY", severity);
+        }
     }
 }
 
 inline void probe_error(std::string_view probe, std::string_view error_msg) {
     if (should_log(Level::Warn)) {
-        detail::write_structured(Level::Warn, "Probe failed",
-                                 "PROBE", probe,
-                                 "ERROR", error_msg);
+        static detail::RateLimiter device_limiter;
+        static detail::RateLimiter boot_limiter;
+        static detail::RateLimiter services_limiter;
+        static detail::RateLimiter resources_limiter;
+        static detail::RateLimiter time_sync_limiter;
+        static detail::RateLimiter update_limiter;
+        static detail::RateLimiter other_limiter;
+
+        detail::RateLimiter* limiter = &other_limiter;
+        if (probe == "device") {
+            limiter = &device_limiter;
+        } else if (probe == "boot") {
+            limiter = &boot_limiter;
+        } else if (probe == "services") {
+            limiter = &services_limiter;
+        } else if (probe == "resources") {
+            limiter = &resources_limiter;
+        } else if (probe == "time_sync") {
+            limiter = &time_sync_limiter;
+        } else if (probe == "update") {
+            limiter = &update_limiter;
+        }
+
+        uint32_t suppressed = 0;
+        bool allow = false;
+        {
+            std::lock_guard lock(detail::g_rate_mutex);
+            allow = detail::allow_rate_limited(*limiter,
+                                               detail::k_probe_error_interval,
+                                               &suppressed);
+        }
+
+        if (!allow) {
+            return;
+        }
+
+        if (suppressed > 0) {
+            std::string msg = "Probe failed (suppressed " +
+                std::to_string(suppressed) + ")";
+            detail::write_structured(Level::Warn, msg,
+                                     "PROBE", probe,
+                                     "ERROR", error_msg);
+        } else {
+            detail::write_structured(Level::Warn, "Probe failed",
+                                     "PROBE", probe,
+                                     "ERROR", error_msg);
+        }
+    }
+}
+
+inline void writer_error(std::string_view msg) {
+    if (should_log(Level::Error)) {
+        static detail::RateLimiter limiter;
+        bool allow = false;
+        {
+            std::lock_guard lock(detail::g_rate_mutex);
+            allow = detail::allow_rate_limited(limiter,
+                                               detail::k_writer_error_interval,
+                                               nullptr);
+        }
+        if (allow) {
+            detail::write_message(Level::Error, msg);
+        }
     }
 }
 
