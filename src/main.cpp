@@ -5,6 +5,7 @@
 #include "daemon.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string_view>
 
@@ -17,6 +18,7 @@ void print_usage(std::string_view program) {
               << "  -c, --config FILE   Configuration file (default: /etc/edge/healthd.conf)\n"
               << "  -f, --foreground    Run in foreground (don't daemonize)\n"
               << "  -v, --verbose       Enable verbose logging\n"
+              << "  --dump-config       Print effective configuration and exit\n"
               << "  --once              Collect once and exit\n"
               << "  -h, --help          Show this help\n"
               << "  --version           Show version\n";
@@ -31,6 +33,7 @@ struct Args {
     bool foreground = false;
     bool verbose = false;
     bool once = false;
+    bool dump_config = false;
     bool help = false;
     bool version = false;
 };
@@ -64,6 +67,8 @@ Args parse_args(int argc, char* argv[]) {
             args.verbose = true;
         } else if (arg == "--once") {
             args.once = true;
+        } else if (arg == "--dump-config") {
+            args.dump_config = true;
         } else if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
             args.config_file = argv[++i];
         }
@@ -88,17 +93,47 @@ int main(int argc, char* argv[]) {
     }
 
     // Load configuration
-    auto config = edge::Config::load_or_default(args.config_file);
+    edge::Config config;
+    std::string config_warning;
+    bool has_warning = false;
+    if (std::filesystem::exists(args.config_file)) {
+        try {
+            config = edge::Config::load(args.config_file);
+        } catch (const std::exception& ex) {
+            config_warning = "Failed to load config file: " + args.config_file +
+                " (" + ex.what() + "); using defaults";
+            has_warning = true;
+            config = edge::Config::defaults();
+        }
+    } else {
+        config_warning = "Config file not found: " + args.config_file +
+            "; using defaults";
+        has_warning = true;
+        config = edge::Config::defaults();
+    }
+    if (has_warning) {
+        std::cerr << "Warning: " << config_warning << "\n";
+    }
     config.foreground = args.foreground;
     config.verbose = args.verbose;
     if (args.verbose) {
         config.log_level = "debug";
     }
     edge::log::set_level(parse_log_level(config.log_level));
+#ifdef EDGE_HAS_SYSTEMD
+    if (has_warning) {
+        edge::log::warn(config_warning);
+    }
+#endif
 
     if (auto err = config.validate()) {
         std::cerr << "Configuration error: " << *err << "\n";
         return EXIT_FAILURE;
+    }
+
+    if (args.dump_config) {
+        std::cout << config.to_json_string(2) << "\n";
+        return EXIT_SUCCESS;
     }
 
     // Create and run daemon
