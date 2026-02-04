@@ -18,7 +18,7 @@ jobs:
           sudo apt-get install -y cmake ninja-build build-essential pkg-config libsystemd-dev python3-dev python3-pip
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja
+        run: cmake -S . -B build -G Ninja -DEDGE_FETCH_SDBUSCPP=ON
 
       - name: Build
         run: cmake --build build -j 2
