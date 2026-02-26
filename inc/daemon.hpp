@@ -90,10 +90,9 @@ private:
     void start_watchdog_thread();
     void stop_watchdog_thread();
     void update_watchdog_heartbeat() noexcept;
-    void watchdog_loop();
+    void watchdog_loop(std::stop_token st);
 
-    std::thread watchdog_thread_;
-    std::atomic<bool> watchdog_running_{false};
+    std::jthread watchdog_thread_;
     std::atomic<int64_t> watchdog_heartbeat_us_{0};
     std::chrono::microseconds watchdog_timeout_{0};
 };

@@ -139,6 +139,11 @@ SnapshotState SnapshotDaemon::current_state() const {
 void SnapshotDaemon::collection_cycle() {
     update_watchdog_heartbeat();
 
+    // Drain pending netlink events to refresh the cache before collection
+    if (nl_monitor_) {
+        nl_monitor_->drain_events();
+    }
+
     // Collect from all probes
     auto device_result = device_probe_->collect();
     auto boot_result = boot_probe_->collect();
@@ -222,33 +227,33 @@ void SnapshotDaemon::start_watchdog_thread() {
         log::warn("collect_interval >= watchdog timeout / 2; systemd may restart the service");
     }
 
-    if (watchdog_running_.exchange(true)) {
-        return;
+    if (watchdog_thread_.joinable()) {
+        return;  // Already running
     }
 
     update_watchdog_heartbeat();
-    watchdog_thread_ = std::thread(&SnapshotDaemon::watchdog_loop, this);
+    watchdog_thread_ = std::jthread([this](std::stop_token st) {
+        watchdog_loop(std::move(st));
+    });
 }
 
 void SnapshotDaemon::stop_watchdog_thread() {
-    watchdog_running_.store(false);
-    if (watchdog_thread_.joinable()) {
-        watchdog_thread_.join();
-    }
+    watchdog_thread_.request_stop();
+    // std::jthread destructor auto-joins
 }
 
 void SnapshotDaemon::update_watchdog_heartbeat() noexcept {
     watchdog_heartbeat_us_.store(monotonic_us(), std::memory_order_relaxed);
 }
 
-void SnapshotDaemon::watchdog_loop() {
+void SnapshotDaemon::watchdog_loop(std::stop_token st) {
     auto timeout = watchdog_timeout_;
     auto interval = timeout / 2;
     if (interval.count() <= 0) {
         interval = std::chrono::microseconds(1);
     }
 
-    while (watchdog_running_.load(std::memory_order_relaxed)) {
+    while (!st.stop_requested()) {
         std::this_thread::sleep_for(interval);
 
         auto last_us = watchdog_heartbeat_us_.load(std::memory_order_relaxed);
