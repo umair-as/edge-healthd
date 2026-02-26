@@ -176,7 +176,7 @@ public:
 
     explicit ResourcesProbe(
         const Config& config,
-        const NetlinkMonitor& nl_monitor,
+        NetlinkMonitor& nl_monitor,
         std::span<const std::string> monitored_mounts = {},
         std::span<const std::string> monitored_interfaces = {}
     );
@@ -185,7 +185,7 @@ public:
 
 private:
     const Config& config_;
-    const NetlinkMonitor& nl_monitor_;
+    NetlinkMonitor& nl_monitor_;
     std::vector<std::string> monitored_mounts_;
     std::vector<std::string> monitored_interfaces_;
 

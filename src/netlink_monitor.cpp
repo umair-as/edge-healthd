@@ -13,9 +13,13 @@
 #include <arpa/inet.h>
 #include <ctime>
 
+#include <cerrno>
 #include <cstring>
 #include <memory>
 #include <vector>
+
+#include <fcntl.h>
+#include <poll.h>
 
 namespace edge {
 
@@ -187,6 +191,15 @@ bool NetlinkMonitor::init() {
     fd_ = mnl_socket_get_fd(nl);
     fd_ptr_ = nl; // Store for the destructor
 
+    // Set non-blocking so drain_events() won't block
+    int flags = fcntl(fd_, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
+        mnl_socket_close(nl);
+        fd_ = -1;
+        fd_ptr_ = nullptr;
+        return false;
+    }
+
     // Perform initial state dump to populate the cache
     // Order matters: link dump first (populates cache entries), then addr dump
     request_dump();
@@ -231,6 +244,10 @@ void NetlinkMonitor::drain_response() {
     std::vector<char> buf(buf_size);
 
     for (;;) {
+        // Socket is non-blocking; wait for data with a short timeout
+        struct pollfd pfd{.fd = fd_, .events = POLLIN, .revents = 0};
+        if (poll(&pfd, 1, 100) <= 0) break;
+
         int ret = mnl_socket_recvfrom(static_cast<struct mnl_socket*>(fd_ptr_), buf.data(), buf.size());
         if (ret <= 0) break;
 
@@ -276,6 +293,32 @@ void NetlinkMonitor::process_incoming() {
             break;
         default:
             break;
+        }
+    }
+}
+
+void NetlinkMonitor::drain_events() {
+    const size_t buf_size = static_cast<size_t>(MNL_SOCKET_BUFFER_SIZE);
+    std::vector<char> buf(buf_size);
+
+    for (;;) {
+        int ret = mnl_socket_recvfrom(static_cast<struct mnl_socket*>(fd_ptr_), buf.data(), buf.size());
+        if (ret <= 0) break;  // EAGAIN/EWOULDBLOCK on non-blocking socket
+
+        auto* nlh = reinterpret_cast<struct nlmsghdr*>(buf.data());
+        for (; mnl_nlmsg_ok(nlh, ret); nlh = mnl_nlmsg_next(nlh, &ret)) {
+            switch (nlh->nlmsg_type) {
+            case RTM_NEWLINK:
+            case RTM_DELLINK:
+                data_cb(nlh, &cache_);
+                break;
+            case RTM_NEWADDR:
+            case RTM_DELADDR:
+                addr_data_cb(nlh, &cache_);
+                break;
+            default:
+                break;
+            }
         }
     }
 }

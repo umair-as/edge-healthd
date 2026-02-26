@@ -362,7 +362,7 @@ std::string fs_type_to_string(long type) {
 } // namespace
 
 ResourcesProbe::ResourcesProbe(const Config& config,
-                                     const NetlinkMonitor& nl_monitor,
+                                     NetlinkMonitor& nl_monitor,
                                        std::span<const std::string> monitored_mounts,
                                        std::span<const std::string> monitored_interfaces)
     : config_(config)

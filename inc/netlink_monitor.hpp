@@ -59,6 +59,10 @@ public:
     // Called when the event loop detects data on the FD
     void process_incoming();
 
+    // Drain all pending multicast events (non-blocking)
+    // Call before reading cache to ensure fresh data
+    void drain_events();
+
     // Provides the latest cached data to the ResourcesProbe
     std::vector<NetlinkInterfaceStats> get_all_stats() const;
 
