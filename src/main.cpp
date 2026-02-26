@@ -3,29 +3,55 @@
 
 #include "config.hpp"
 #include "daemon.hpp"
+#include "log.hpp"
 
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <string_view>
+#include <unistd.h>
 
 namespace {
 
-void print_usage(std::string_view program) {
-    std::cout << "Usage: " << program << " [OPTIONS]\n"
-              << "\n"
-              << "Options:\n"
-              << "  -c, --config FILE   Configuration file (default: /etc/edge/healthd.conf)\n"
-              << "  -f, --foreground    Run in foreground (don't daemonize)\n"
-              << "  -v, --verbose       Enable verbose logging\n"
-              << "  --dump-config       Print effective configuration and exit\n"
-              << "  --once              Collect once and exit\n"
-              << "  -h, --help          Show this help\n"
-              << "  --version           Show version\n";
+// ANSI helpers for stdout (separate from log's stderr detection)
+struct HelpColors {
+    const char* bold;
+    const char* dim;
+    const char* cyan;
+    const char* byellow;  // bold yellow
+    const char* ul;       // underline
+    const char* reset;
+};
+
+HelpColors help_colors() {
+    if (::isatty(STDOUT_FILENO)) {
+        return {"\033[1m", "\033[2m", "\033[36m", "\033[1;33m", "\033[4m", "\033[0m"};
+    }
+    return {"", "", "", "", "", ""};
+}
+
+void print_usage([[maybe_unused]] std::string_view program) {
+    auto c = help_colors();
+    std::cout
+        << c.bold << "edge-healthd" << c.reset << " " << c.dim << "0.1.0" << c.reset << "\n"
+        << c.dim << "Edge device health monitoring daemon" << c.reset << "\n"
+        << "\n"
+        << c.byellow << "USAGE:" << c.reset << "\n"
+        << "    " << c.bold << "edge-healthd" << c.reset << " " << c.cyan << "[OPTIONS]" << c.reset << "\n"
+        << "\n"
+        << c.byellow << "OPTIONS:" << c.reset << "\n"
+        << "    " << c.cyan << "-h" << c.reset << ", " << c.cyan << "--help" << c.reset << "              Show this help message and exit\n"
+        << "    " << c.cyan << "--version" << c.reset << "               Show version information\n"
+        << "    " << c.cyan << "-f" << c.reset << ", " << c.cyan << "--foreground" << c.reset << "        Run in foreground (don't daemonize)\n"
+        << "    " << c.cyan << "-v" << c.reset << ", " << c.cyan << "--verbose" << c.reset << "           Enable debug logging\n"
+        << "    " << c.cyan << "-c" << c.reset << ", " << c.cyan << "--config" << c.reset << " " << c.ul << "FILE" << c.reset << "      Configuration file " << c.dim << "[default: /etc/edge/healthd.conf]" << c.reset << "\n"
+        << "    " << c.cyan << "--dump-config" << c.reset << "           Print effective configuration and exit\n"
+        << "    " << c.cyan << "--once" << c.reset << "                  Collect a single snapshot and exit\n";
 }
 
 void print_version() {
-    std::cout << "edge-healthd 0.1.0\n";
+    auto c = help_colors();
+    std::cout << c.bold << "edge-healthd" << c.reset << " " << c.dim << "0.1.0" << c.reset << "\n";
 }
 
 struct Args {
@@ -80,6 +106,8 @@ Args parse_args(int argc, char* argv[]) {
 } // namespace
 
 int main(int argc, char* argv[]) {
+    edge::log::init();
+
     auto args = parse_args(argc, argv);
 
     if (args.help) {

@@ -17,6 +17,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 #ifdef EDGE_HAS_SYSTEMD
 #include <systemd/sd-journal.h>
@@ -52,8 +53,39 @@ enum class Level : int {
 namespace detail {
 
 inline std::atomic<Level> g_level{Level::Info};
+inline bool g_color_enabled{false};
 inline std::mutex g_mutex;
 inline std::mutex g_rate_mutex;
+
+inline void init_color() {
+    g_color_enabled = ::isatty(STDERR_FILENO) != 0;
+}
+
+struct ColorPair {
+    std::string_view on;
+    std::string_view off;
+};
+
+inline ColorPair level_color(Level level) noexcept {
+    if (!g_color_enabled) {
+        return {{}, {}};
+    }
+    switch (level) {
+        case Level::Debug: return {"\033[36m",   "\033[0m"};
+        case Level::Info:  return {"\033[32m",   "\033[0m"};
+        case Level::Warn:  return {"\033[33m",   "\033[0m"};
+        case Level::Error: return {"\033[1;31m", "\033[0m"};
+    }
+    return {{}, {}};
+}
+
+inline std::string_view dim_code() noexcept {
+    return g_color_enabled ? "\033[2m" : "";
+}
+
+inline std::string_view reset_code() noexcept {
+    return g_color_enabled ? "\033[0m" : "";
+}
 
 inline constexpr auto k_probe_error_interval = std::chrono::seconds(60);
 inline constexpr auto k_snapshot_interval = std::chrono::minutes(5);
@@ -133,9 +165,16 @@ inline void write_message(Level level, std::string_view msg) {
         nullptr);
 #else
     auto level_str = to_string(level);
-    std::fprintf(stderr, "%s [%-5.*s] %.*s\n",
+    auto [con, coff] = level_color(level);
+    auto dim = dim_code();
+    auto rst = reset_code();
+    std::fprintf(stderr, "%.*s%s%.*s [%.*s%-5.*s%.*s] %.*s\n",
+                 static_cast<int>(dim.size()), dim.data(),
                  format_timestamp().c_str(),
+                 static_cast<int>(rst.size()), rst.data(),
+                 static_cast<int>(con.size()), con.data(),
                  static_cast<int>(level_str.size()), level_str.data(),
+                 static_cast<int>(coff.size()), coff.data(),
                  static_cast<int>(msg.size()), msg.data());
 #endif
 }
@@ -166,17 +205,28 @@ inline void write_structured(Level level, std::string_view msg,
     }
 #else
     auto level_str = to_string(level);
+    auto [con, coff] = level_color(level);
+    auto dim = dim_code();
+    auto rst = reset_code();
     if (key2.empty()) {
-        std::fprintf(stderr, "%s [%-5.*s] %.*s %.*s=%.*s\n",
+        std::fprintf(stderr, "%.*s%s%.*s [%.*s%-5.*s%.*s] %.*s %.*s=%.*s\n",
+                     static_cast<int>(dim.size()), dim.data(),
                      format_timestamp().c_str(),
+                     static_cast<int>(rst.size()), rst.data(),
+                     static_cast<int>(con.size()), con.data(),
                      static_cast<int>(level_str.size()), level_str.data(),
+                     static_cast<int>(coff.size()), coff.data(),
                      static_cast<int>(msg.size()), msg.data(),
                      static_cast<int>(key1.size()), key1.data(),
                      static_cast<int>(val1.size()), val1.data());
     } else {
-        std::fprintf(stderr, "%s [%-5.*s] %.*s %.*s=%.*s %.*s=%.*s\n",
+        std::fprintf(stderr, "%.*s%s%.*s [%.*s%-5.*s%.*s] %.*s %.*s=%.*s %.*s=%.*s\n",
+                     static_cast<int>(dim.size()), dim.data(),
                      format_timestamp().c_str(),
+                     static_cast<int>(rst.size()), rst.data(),
+                     static_cast<int>(con.size()), con.data(),
                      static_cast<int>(level_str.size()), level_str.data(),
+                     static_cast<int>(coff.size()), coff.data(),
                      static_cast<int>(msg.size()), msg.data(),
                      static_cast<int>(key1.size()), key1.data(),
                      static_cast<int>(val1.size()), val1.data(),
@@ -191,6 +241,10 @@ inline void write_structured(Level level, std::string_view msg,
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
+
+inline void init() {
+    detail::init_color();
+}
 
 inline void set_level(Level level) noexcept {
     detail::g_level.store(level, std::memory_order_relaxed);
