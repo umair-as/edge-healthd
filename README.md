@@ -1,5 +1,10 @@
 # edge-healthd
 
+[![CI](https://github.com/umair-uas/edge-healthd/actions/workflows/ci.yml/badge.svg)](https://github.com/umair-uas/edge-healthd/actions/workflows/ci.yml)
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)]()
+
 Edge device health monitoring daemon for embedded Linux platforms.
 
 ## Overview
