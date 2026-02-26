@@ -338,7 +338,17 @@ std::vector<NetlinkInterfaceStats> NetlinkMonitor::get_all_stats() const {
 // Fallback stub when EDGE_HAS_LIBMNL is not defined
 namespace edge {
 
-std::vector<NetlinkInterfaceStats> query_netlink_stats() {
+NetlinkMonitor::NetlinkMonitor() : fd_(-1), fd_ptr_(nullptr) {}
+NetlinkMonitor::~NetlinkMonitor() = default;
+
+bool NetlinkMonitor::init() { return false; }
+void NetlinkMonitor::process_incoming() {}
+void NetlinkMonitor::drain_events() {}
+void NetlinkMonitor::request_dump() {}
+void NetlinkMonitor::request_addr_dump() {}
+void NetlinkMonitor::drain_response() {}
+
+std::vector<NetlinkInterfaceStats> NetlinkMonitor::get_all_stats() const {
     return {};
 }
 
