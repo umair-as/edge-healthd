@@ -7,6 +7,7 @@
 
 #include <cctype>
 #include <chrono>
+#include <ctime>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -392,6 +393,99 @@ Severity TimeSyncProbe::evaluate_sync_severity(const TimeSyncStatus& status) con
     }
 
     return Severity::Warn;
+}
+
+// -----------------------------------------------------------------------------
+// UpdateProbe — RAUC D-Bus integration
+// -----------------------------------------------------------------------------
+
+bool UpdateProbe::collect_rauc_update(UpdateStatus& status) const {
+    // RAUC D-Bus: de.pengutronix.rauc / de.pengutronix.rauc.Installer
+    // GetSlotStatus returns a(sa{sv}): array of (slot_name, property_dict)
+    using SlotProps = std::map<std::string, sdbus::Variant>;
+    using SlotEntry = sdbus::Struct<std::string, SlotProps>;
+
+    try {
+        auto connection = sdbus::createSystemBusConnection();
+        connection->setMethodCallTimeout(config_.dbus_timeout);
+
+        auto proxy = sdbus::createProxy(*connection,
+                                        sdbus::ServiceName("de.pengutronix.rauc"),
+                                        sdbus::ObjectPath("/"));
+
+        std::vector<SlotEntry> slots;
+        proxy->callMethod("GetSlotStatus")
+            .onInterface("de.pengutronix.rauc.Installer")
+            .storeResultsTo(slots);
+
+        // Helper: safely extract a string property from a slot's property dict
+        auto prop_str = [](const SlotProps& props, std::string_view key) -> std::string {
+            auto it = props.find(std::string(key));
+            if (it == props.end()) return {};
+            try { return it->second.get<std::string>(); } catch (...) { return {}; }
+        };
+
+        for (const auto& slot : slots) {
+            const auto& props = std::get<1>(slot);
+
+            if (prop_str(props, "state") != "booted") {
+                continue;
+            }
+
+            // Active slot — use bootname (A/B) as the human-readable slot id
+            auto bootname = prop_str(props, "bootname");
+            if (!bootname.empty()) {
+                status.active_slot = bootname;
+            }
+
+            LastUpdate update;
+
+            // Bundle identity: prefer "bundle.version/bundle.build"
+            auto version = prop_str(props, "bundle.version");
+            auto build   = prop_str(props, "bundle.build");
+            if (!version.empty() && !build.empty()) {
+                update.id = version + "/" + build;
+            } else if (!build.empty()) {
+                update.id = build;
+            } else if (!version.empty()) {
+                update.id = version;
+            }
+
+            // Parse activated timestamp (ISO 8601: "2026-03-03T09:19:39Z")
+            auto ts = prop_str(props, "activated.timestamp");
+            if (!ts.empty()) {
+                struct tm tm{};
+                if (strptime(ts.c_str(), "%Y-%m-%dT%H:%M:%SZ", &tm) != nullptr) {
+                    auto t = timegm(&tm);
+                    if (t != static_cast<time_t>(-1)) {
+                        update.installed_at = std::chrono::system_clock::from_time_t(t);
+                    }
+                }
+            }
+
+            // Determine result from boot-status and slot status
+            auto boot_status = prop_str(props, "boot-status");
+            auto slot_status = prop_str(props, "status");
+            if (boot_status == "good" && slot_status == "ok") {
+                update.result = UpdateResult::Success;
+                auto compatible = prop_str(props, "bundle.compatible");
+                if (!compatible.empty()) {
+                    update.detail = compatible;
+                }
+            } else {
+                update.result = UpdateResult::Failed;
+                update.detail = "boot-status=" + boot_status + " status=" + slot_status;
+                status.overall = Severity::Warn;
+            }
+
+            status.last_update = std::move(update);
+            return true;
+        }
+    } catch (const sdbus::Error&) {
+        // RAUC not available on this system — caller falls back to file-based detection
+    }
+
+    return false;
 }
 
 } // namespace edge

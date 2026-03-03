@@ -683,12 +683,12 @@ ProbeResult<UpdateStatus> UpdateProbe::collect() const {
         return status;
     }
 
-    status.active_slot = detect_active_slot();
-    status.last_update = load_last_update();
+    // Try live RAUC D-Bus data first; fall back to static file if unavailable.
+    if (!collect_rauc_update(status)) {
+        status.active_slot = detect_active_slot();
+        status.last_update = load_last_update();
 
-    // Evaluate severity based on last update
-    if (status.last_update) {
-        if (status.last_update->result == UpdateResult::Failed) {
+        if (status.last_update && status.last_update->result == UpdateResult::Failed) {
             status.overall = Severity::Warn;
         }
     }
