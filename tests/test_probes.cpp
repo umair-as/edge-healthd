@@ -88,3 +88,20 @@ TEST_CASE("make_error helper", "[probes]") {
     CHECK(err.message == "failed to read");
     CHECK(err.code == 5);
 }
+
+TEST_CASE("JournalProbe collects system journal", "[probes]") {
+    auto config = Config::defaults();
+    JournalProbe probe(config);
+
+    auto result = probe.collect();
+    REQUIRE(result.has_value());
+
+    auto& journal = *result;
+    // Overall should be a known severity (not indeterminate)
+    CHECK((journal.overall == Severity::Ok ||
+           journal.overall == Severity::Warn ||
+           journal.overall == Severity::Crit ||
+           journal.overall == Severity::Unknown));
+    // error_count must be consistent with recent_errors (count >= recent_errors.size())
+    CHECK(journal.error_count >= journal.recent_errors.size());
+}

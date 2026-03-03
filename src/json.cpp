@@ -251,6 +251,14 @@ void to_json(nlohmann::json& j, const UpdateStatus& update) {
     }
 }
 
+void to_json(nlohmann::json& j, const JournalStatus& journal) {
+    j = nlohmann::json{
+        {"overall", std::string(edge::to_string(journal.overall))},
+        {"error_count", journal.error_count},
+        {"recent_errors", journal.recent_errors}
+    };
+}
+
 void to_json(nlohmann::json& j, const SnapshotSummary& summary) {
     j = nlohmann::json{
         {"severity", std::string(edge::to_string(summary.severity))},
@@ -273,6 +281,7 @@ void to_json(nlohmann::json& j, const SnapshotState& state) {
         {"resources", state.resources},
         {"time_sync", state.time_sync},
         {"update", state.update},
+        {"journal", state.journal},
         {"summary", state.summary}
     };
 }

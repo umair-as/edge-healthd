@@ -250,6 +250,12 @@ struct UpdateStatus {
     std::optional<LastUpdate> last_update;
 };
 
+struct JournalStatus {
+    Severity overall = Severity::Unknown;
+    uint32_t error_count = 0;               // entries collected in scan window
+    std::vector<std::string> recent_errors; // newest first, capped by config
+};
+
 struct SnapshotSummary {
     Severity severity = Severity::Unknown;
     std::vector<std::string> reasons{"initial"};
@@ -273,6 +279,7 @@ struct SnapshotState {
     ResourcesStatus resources;
     TimeSyncStatus time_sync;
     UpdateStatus update;
+    JournalStatus journal;
     SnapshotSummary summary;
 };
 

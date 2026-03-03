@@ -34,7 +34,8 @@ public:
         const ServicesStatus& services,
         const ResourcesStatus& resources,
         const TimeSyncStatus& time_sync,
-        const UpdateStatus& update
+        const UpdateStatus& update,
+        const JournalStatus& journal
     ) const;
 
     /// Aggregate with optional values (for partial collection scenarios)
@@ -44,7 +45,8 @@ public:
         std::optional<ServicesStatus> services,
         std::optional<ResourcesStatus> resources,
         std::optional<TimeSyncStatus> time_sync,
-        std::optional<UpdateStatus> update
+        std::optional<UpdateStatus> update,
+        std::optional<JournalStatus> journal
     ) const;
 
     // -------------------------------------------------------------------------
@@ -66,13 +68,17 @@ public:
     /// Evaluate update status severity
     [[nodiscard]] Severity evaluate_update(const UpdateStatus& update) const;
 
+    /// Evaluate journal status severity
+    [[nodiscard]] Severity evaluate_journal(const JournalStatus& journal) const;
+
     /// Compute overall severity from individual severities
     [[nodiscard]] Severity compute_overall(
         Severity boot,
         Severity services,
         Severity resources,
         Severity time_sync,
-        Severity update
+        Severity update,
+        Severity journal
     ) const;
 
 private:
@@ -88,7 +94,8 @@ private:
         const ServicesStatus& services,
         const ResourcesStatus& resources,
         const TimeSyncStatus& time_sync,
-        const UpdateStatus& update
+        const UpdateStatus& update,
+        const JournalStatus& journal
     ) const;
 
     /// Evaluate CPU load against thresholds

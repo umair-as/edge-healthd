@@ -257,6 +257,19 @@
       "required": ["overall"]
     },
 
+    "journal": {
+      "type": "object",
+      "properties": {
+        "overall": { "$ref": "#/$defs/severity" },
+        "error_count": { "type": "integer", "minimum": 0 },
+        "recent_errors": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 512 }
+        }
+      },
+      "required": ["overall", "error_count", "recent_errors"]
+    },
+
     "summary": {
       "type": "object",
       "properties": {
@@ -284,6 +297,7 @@
     "resources",
     "time_sync",
     "update",
+    "journal",
     "summary"
   ],
 

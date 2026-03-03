@@ -245,6 +245,24 @@ private:
 };
 
 // -----------------------------------------------------------------------------
+// JournalProbe
+// Gathers: System-wide critical/error journal entries (Priority <= 3)
+// Sources: systemd journal (sd_journal)
+// -----------------------------------------------------------------------------
+
+class JournalProbe {
+public:
+    using DataType = JournalStatus;
+
+    explicit JournalProbe(const Config& config);
+
+    [[nodiscard]] ProbeResult<JournalStatus> collect() const;
+
+private:
+    const Config& config_;
+};
+
+// -----------------------------------------------------------------------------
 // Concept compliance verification
 // -----------------------------------------------------------------------------
 
@@ -254,5 +272,6 @@ static_assert(Probe<ServicesProbe>);
 static_assert(Probe<ResourcesProbe>);
 static_assert(Probe<TimeSyncProbe>);
 static_assert(Probe<UpdateProbe>);
+static_assert(Probe<JournalProbe>);
 
 } // namespace edge
