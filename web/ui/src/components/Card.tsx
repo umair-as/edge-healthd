@@ -10,12 +10,12 @@ interface CardProps {
 export function Card({ title, children, className = '', hover = false }: CardProps) {
   return (
     <div
-      class={`bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border p-4 ${
-        hover ? 'card-hover' : ''
+      class={`bg-white dark:bg-dark-card rounded-xl border border-gray-200 dark:border-dark-border p-4 shadow-sm dark:shadow-card-dark ${
+        hover ? 'card-hover cursor-pointer' : ''
       } ${className}`}
     >
       {title && (
-        <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+        <h3 class="text-sm font-semibold text-gray-600 dark:text-slate-300 uppercase tracking-wider mb-3">
           {title}
         </h3>
       )}
@@ -27,7 +27,7 @@ export function Card({ title, children, className = '', hover = false }: CardPro
 // Compact card variant
 export function CompactCard({ children, className = '' }: Omit<CardProps, 'title' | 'hover'>) {
   return (
-    <div class={`bg-white dark:bg-dark-card rounded-lg border border-gray-200 dark:border-dark-border p-3 ${className}`}>
+    <div class={`bg-white dark:bg-dark-card rounded-xl border border-gray-200 dark:border-dark-border p-3 shadow-sm dark:shadow-card-dark ${className}`}>
       {children}
     </div>
   );

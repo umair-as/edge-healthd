@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Base font */
+body {
+  font-family: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+code, pre, .font-mono {
+  font-family: 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+}
+
 /* Smooth transitions for theme changes */
 html {
   transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;

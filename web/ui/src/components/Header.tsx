@@ -4,8 +4,8 @@ import { ConnectionStatus } from './ConnectionStatus';
 
 export function Header() {
   return (
-    <header class="bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border sticky top-0 z-10">
-      <div class="container mx-auto px-4 py-3">
+    <header class="bg-white dark:bg-dark-surface border-b border-gray-200 dark:border-dark-border sticky top-0 z-10 transition-colors duration-200">
+      <div class="px-4 py-3">
         <div class="flex items-center justify-between">
           {/* Left: Device info */}
           <div class="flex items-center gap-3">

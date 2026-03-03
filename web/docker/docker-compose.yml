@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Frontend dev server with HMR
   ui:
@@ -8,7 +6,7 @@ services:
       dockerfile: docker/Dockerfile.dev
       target: ui
     ports:
-      - "5173:5173"
+      - "${UI_PORT:-5173}:5173"
     volumes:
       - ../ui:/app
       - /app/node_modules
@@ -26,7 +24,7 @@ services:
       dockerfile: docker/Dockerfile.dev
       target: server
     ports:
-      - "8080:8080"
+      - "${SERVER_PORT:-8080}:8080"
     volumes:
       - ../server:/app
       - mock-data:/data/edge/health
