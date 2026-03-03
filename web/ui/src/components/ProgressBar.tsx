@@ -37,7 +37,7 @@ export function ProgressBar({
           {showValue && <span class="text-sm font-medium">{percent}%</span>}
         </div>
       )}
-      <div class={`w-full ${heightClass} bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden`}>
+      <div class={`w-full ${heightClass} bg-gray-200 dark:bg-dark-card-hover rounded-full overflow-hidden`}>
         <div
           class={`${heightClass} ${colorClass} rounded-full transition-all duration-300`}
           style={{ width: `${percent}%` }}
