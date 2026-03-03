@@ -3,6 +3,7 @@
 
 #include "daemon.hpp"
 #include "netlink_monitor.hpp"
+#include "version.hpp"
 
 #include <chrono>
 #include <csignal>
@@ -86,7 +87,7 @@ int SnapshotDaemon::run() {
     running_.store(true);
     setup_signal_handlers();
 
-    log::daemon_starting("0.1.0");
+    log::daemon_starting(EDGE_HEALTHD_VERSION);
 
     // Initial collection
     collection_cycle();
