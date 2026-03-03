@@ -352,14 +352,22 @@ inline void probe_error(std::string_view probe, std::string_view error_msg) {
             return;
         }
 
+        std::string message;
+        message.reserve(64 + probe.size() + error_msg.size());
+        message = "Probe failed [";
+        message.append(probe.data(), probe.size());
+        message += "]: ";
+        message.append(error_msg.data(), error_msg.size());
+
         if (suppressed > 0) {
-            std::string msg = "Probe failed (suppressed " +
-                std::to_string(suppressed) + ")";
-            detail::write_structured(Level::Warn, msg,
+            message += " (suppressed ";
+            message += std::to_string(suppressed);
+            message += ")";
+            detail::write_structured(Level::Warn, message,
                                      "PROBE", probe,
                                      "ERROR", error_msg);
         } else {
-            detail::write_structured(Level::Warn, "Probe failed",
+            detail::write_structured(Level::Warn, message,
                                      "PROBE", probe,
                                      "ERROR", error_msg);
         }
