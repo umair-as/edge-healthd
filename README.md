@@ -1,4 +1,4 @@
-# edge-healthd
+# edge-healthd 🩺
 
 [![CI](https://github.com/umair-as/edge-healthd/actions/workflows/ci.yml/badge.svg)](https://github.com/umair-as/edge-healthd/actions/workflows/ci.yml)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
@@ -7,28 +7,28 @@
 
 A lightweight health monitoring daemon for resource-constrained edge gateways. It collects device metrics via modular probes and writes an atomic JSON snapshot to tmpfs every collection cycle — designed for offline-first operation and fleet observability.
 
-## Supported Platforms
+## 🖥️ Supported Platforms
 
-| Platform | Architecture | Tested |
+| Platform | Architecture | Status |
 |----------|-------------|--------|
-| Raspberry Pi 5 | aarch64 | ✓ Yocto `igw.0.1` |
-| VisionFive2 | riscv64 | build-tested |
-| i.MX93 EVK | aarch64 | build-tested |
+| Raspberry Pi 5 | aarch64 | ✅ Yocto `igw.0.1` |
+| VisionFive2 | riscv64 | 🔨 build-tested |
+| i.MX93 EVK | aarch64 | 🔨 build-tested |
 
-## Features
+## ✨ Features
 
-- **Boot health** — uptime, consecutive boot failure tracking via persistent state
-- **Systemd services** — unit states, restart counts, socket-activated service detection (e.g. `sshd.socket`)
-- **System resources** — CPU load, memory, disk mounts, temperature, network stats via event-driven Netlink (zero-poll)
-- **Network auto-discovery** — reports all non-loopback interfaces when `monitored_interfaces` is not configured
-- **Time synchronization** — NTP lock state via `systemd-timesyncd` D-Bus
-- **OTA updates** — RAUC A/B slot status, bundle version and timestamp via `de.pengutronix.rauc` D-Bus
-- **Device identity** — auto-reads `/proc/device-tree/serial-number` as stable hardware ID across re-images
-- **Atomic snapshot writes** — temp file + fsync + rename; reader never sees a partial write
-- **Flash wear reduction** — snapshot written to `/run/health/state.json` (tmpfs); persistent state on `/data`
-- **Systemd hardening** — `Type=notify`, watchdog heartbeat, `ProtectSystem=strict`, `NoNewPrivileges`, capability restrictions
+- 🔁 **Boot health** — uptime, consecutive boot failure tracking via persistent state
+- ⚙️ **Systemd services** — unit states, restart counts, socket-activated service detection (e.g. `sshd.socket`)
+- 📊 **System resources** — CPU load, memory, disk mounts, temperature, network stats via event-driven Netlink (zero-poll)
+- 🌐 **Network auto-discovery** — reports all non-loopback interfaces when `monitored_interfaces` is not configured
+- 🕐 **Time synchronization** — NTP lock state via `systemd-timesyncd` D-Bus
+- 📦 **OTA updates** — RAUC A/B slot status, bundle version and timestamp via `de.pengutronix.rauc` D-Bus
+- 🔖 **Device identity** — auto-reads `/proc/device-tree/serial-number` as stable hardware ID across re-images
+- ⚛️ **Atomic snapshot writes** — temp file + fsync + rename; reader never sees a partial write
+- 💾 **Flash wear reduction** — snapshot written to `/run/health/state.json` (tmpfs); persistent state on `/data`
+- 🔒 **Systemd hardening** — `Type=notify`, watchdog heartbeat, `ProtectSystem=strict`, `NoNewPrivileges`, capability restrictions
 
-## Architecture
+## 🏗️ Architecture
 
 Six probes feed an aggregator that evaluates per-subsystem severity thresholds (ok / warn / crit). The writer atomically commits the result as a JSON snapshot.
 
@@ -43,25 +43,25 @@ graph TD
         UP[UpdateProbe]
     end
 
-    NL[NetlinkMonitor<br/><i>event-driven, zero-poll</i>] --> RP
-    RAUC[de.pengutronix.rauc<br/><i>D-Bus</i>] --> UP
-    SD[org.freedesktop.systemd1<br/><i>D-Bus</i>] --> SP
-    TD[org.freedesktop.timedate1<br/><i>D-Bus</i>] --> TP
+    NL[NetlinkMonitor] --> RP
+    RAUC[de.pengutronix.rauc D-Bus] --> UP
+    SD[org.freedesktop.systemd1 D-Bus] --> SP
+    TD[org.freedesktop.timedate1 D-Bus] --> TP
 
-    DP --> AGG[Aggregator<br/><i>severity evaluation</i>]
+    DP --> AGG[Aggregator]
     BP --> AGG
     SP --> AGG
     RP --> AGG
     TP --> AGG
     UP --> AGG
 
-    AGG --> W[Writer<br/><i>atomic JSON snapshot</i>]
-    W --> OUT[/run/health/state.json<br/><i>tmpfs</i>]
+    AGG --> W[Writer]
+    W --> OUT[/run/health/state.json]
 
-    DAEMON[SnapshotDaemon<br/><i>sd-notify · watchdog · signals</i>] -.->|orchestrates| AGG
+    DAEMON[SnapshotDaemon] -.->|sd-notify / watchdog| AGG
 ```
 
-## Snapshot Output
+## 📄 Snapshot Output
 
 Written to `/run/health/state.json` (tmpfs) on every collection cycle. Example from a live RPi5 deployment:
 
@@ -109,16 +109,16 @@ Written to `/run/health/state.json` (tmpfs) on every collection cycle. Example f
 }
 ```
 
-### Severity levels
+### 🚦 Severity levels
 
-| `severity` | Meaning |
-|------------|---------|
-| `ok` | All monitored subsystems healthy |
-| `warn` | Degraded — service restarting, disk >80%, NTP unlocked |
-| `crit` | Action required — service failed, disk >95%, boot loop |
-| `unknown` | Probe could not collect data (D-Bus unavailable, etc.) |
+| Severity | Meaning |
+|----------|---------|
+| 🟢 `ok` | All monitored subsystems healthy |
+| 🟡 `warn` | Degraded — service restarting, disk >80%, NTP unlocked |
+| 🔴 `crit` | Action required — service failed, disk >95%, boot loop |
+| ⚪ `unknown` | Probe could not collect data (D-Bus unavailable, etc.) |
 
-## Building
+## 🔨 Building
 
 ### Native (development)
 
@@ -163,7 +163,7 @@ cmake --build build-target
 | `EDGE_FETCH_SDBUSCPP` | OFF | Auto-fetch sdbus-c++ v2.0 via FetchContent |
 | `EDGE_WEB_UI` | OFF | Build optional Go + Preact web dashboard |
 
-## Usage
+## 🚀 Usage
 
 ```bash
 edge-healthd                         # Run as daemon (systemd-managed)
@@ -173,7 +173,7 @@ edge-healthd -c /path/to/conf.json   # Custom config file
 edge-healthd --dump-config           # Print effective config and exit
 ```
 
-## Configuration
+## ⚙️ Configuration
 
 Default: `/etc/edge/healthd.conf` (JSON). All fields are optional — the daemon runs with built-in defaults.
 
@@ -207,7 +207,7 @@ Default: `/etc/edge/healthd.conf` (JSON). All fields are optional — the daemon
 
 See [`config/healthd.conf.example`](config/healthd.conf.example) for all options.
 
-## Deployment
+## 📡 Deployment
 
 ```bash
 # Install binary and service unit
@@ -226,6 +226,6 @@ cat /run/health/state.json | jq .summary
 
 The service unit runs as an unprivileged `edgehealth` user with `ProtectSystem=strict`. The `/run/health` directory is created automatically by systemd via `RuntimeDirectory=health`.
 
-## License
+## 📜 License
 
 MIT
