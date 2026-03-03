@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -25,6 +26,7 @@
 #include <sys/socket.h>
 #include <sys/statfs.h>
 #include <sys/statvfs.h>
+#include <sys/sysinfo.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
@@ -105,6 +107,22 @@ OsInfo DeviceProbe::read_os_release() const {
 }
 
 std::string DeviceProbe::read_machine_id() const {
+    // Prefer hardware serial from device-tree (stable across re-images)
+    {
+        std::ifstream file("/proc/device-tree/serial-number");
+        if (file) {
+            std::string id;
+            std::getline(file, id);
+            // device-tree strings are null-terminated; strip null and whitespace
+            id.erase(std::remove_if(id.begin(), id.end(),
+                         [](unsigned char c){ return c == '\0' || std::isspace(c); }),
+                     id.end());
+            if (!id.empty()) {
+                return id;
+            }
+        }
+    }
+
     std::ifstream file("/etc/machine-id");
     if (!file) {
         return "unknown";
@@ -262,10 +280,20 @@ namespace {
 struct MemInfoStats {
     uint64_t mem_total_kb = 0;
     uint64_t mem_available_kb = 0;
+    uint64_t mem_free_kb = 0;
+    uint64_t buffers_kb = 0;
+    uint64_t cached_kb = 0;
+    uint64_t sreclaimable_kb = 0;
+    uint64_t shmem_kb = 0;
     uint64_t swap_total_kb = 0;
     uint64_t swap_free_kb = 0;
     bool has_mem_total = false;
     bool has_mem_available = false;
+    bool has_mem_free = false;
+    bool has_buffers = false;
+    bool has_cached = false;
+    bool has_sreclaimable = false;
+    bool has_shmem = false;
     bool has_swap_total = false;
     bool has_swap_free = false;
 };
@@ -280,17 +308,36 @@ std::optional<MemInfoStats> read_meminfo(int* err_out) {
     }
 
     MemInfoStats stats;
-    std::string key;
-    uint64_t value = 0;
-    std::string unit;
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string key;
+        uint64_t value = 0;
+        if (!(iss >> key >> value)) {
+            continue;
+        }
 
-    while (file >> key >> value >> unit) {
         if (key == "MemTotal:") {
             stats.mem_total_kb = value;
             stats.has_mem_total = true;
         } else if (key == "MemAvailable:") {
             stats.mem_available_kb = value;
             stats.has_mem_available = true;
+        } else if (key == "MemFree:") {
+            stats.mem_free_kb = value;
+            stats.has_mem_free = true;
+        } else if (key == "Buffers:") {
+            stats.buffers_kb = value;
+            stats.has_buffers = true;
+        } else if (key == "Cached:") {
+            stats.cached_kb = value;
+            stats.has_cached = true;
+        } else if (key == "SReclaimable:") {
+            stats.sreclaimable_kb = value;
+            stats.has_sreclaimable = true;
+        } else if (key == "Shmem:") {
+            stats.shmem_kb = value;
+            stats.has_shmem = true;
         } else if (key == "SwapTotal:") {
             stats.swap_total_kb = value;
             stats.has_swap_total = true;
@@ -298,11 +345,22 @@ std::optional<MemInfoStats> read_meminfo(int* err_out) {
             stats.swap_free_kb = value;
             stats.has_swap_free = true;
         }
+    }
 
-        if (stats.has_mem_total && stats.has_mem_available &&
-            stats.has_swap_total && stats.has_swap_free) {
-            break;
+    if (!stats.has_mem_available && stats.has_mem_free &&
+        stats.has_buffers && stats.has_cached &&
+        stats.has_sreclaimable && stats.has_shmem) {
+        // Fallback for kernels without MemAvailable.
+        auto available =
+            stats.mem_free_kb + stats.buffers_kb + stats.cached_kb +
+            stats.sreclaimable_kb;
+        if (available > stats.shmem_kb) {
+            available -= stats.shmem_kb;
+        } else {
+            available = 0;
         }
+        stats.mem_available_kb = available;
+        stats.has_mem_available = true;
     }
 
     if (!stats.has_mem_total || !stats.has_mem_available) {
@@ -417,24 +475,42 @@ CpuLoad ResourcesProbe::collect_cpu_load() const {
 ProbeResult<MemoryUsage> ResourcesProbe::collect_memory() const {
     int err = 0;
     auto meminfo = read_meminfo(&err);
-    if (!meminfo) {
-        return std::unexpected(make_error(
-            "resources",
-            "Failed to read MemTotal/MemAvailable from /proc/meminfo",
-            err));
-    }
-
     MemoryUsage mem;
-    const uint64_t total_kb = meminfo->mem_total_kb;
-    const uint64_t available_kb = meminfo->mem_available_kb;
+    uint64_t total_kb = 0;
+    uint64_t available_kb = 0;
+    uint64_t swap_total_kb = 0;
+    uint64_t swap_free_kb = 0;
+
+    if (meminfo) {
+        total_kb = meminfo->mem_total_kb;
+        available_kb = meminfo->mem_available_kb;
+        swap_total_kb = meminfo->swap_total_kb;
+        swap_free_kb = meminfo->swap_free_kb;
+    } else {
+        // ProcSubset=pid may hide /proc/meminfo; use sysinfo(2) fallback.
+        struct sysinfo si {};
+        if (sysinfo(&si) != 0) {
+            return std::unexpected(make_error(
+                "resources",
+                "Failed to read memory via /proc/meminfo and sysinfo()",
+                err != 0 ? err : errno));
+        }
+
+        const uint64_t unit = si.mem_unit == 0 ? 1 : static_cast<uint64_t>(si.mem_unit);
+        total_kb = (static_cast<uint64_t>(si.totalram) * unit) / 1024;
+        const auto free_plus_buffer = static_cast<uint64_t>(si.freeram) + static_cast<uint64_t>(si.bufferram);
+        available_kb = (free_plus_buffer * unit) / 1024;
+        swap_total_kb = (static_cast<uint64_t>(si.totalswap) * unit) / 1024;
+        swap_free_kb = (static_cast<uint64_t>(si.freeswap) * unit) / 1024;
+    }
 
     mem.mem_total_mb = total_kb / 1024;
     if (total_kb >= available_kb) {
         mem.mem_used_mb = (total_kb - available_kb) / 1024;
     }
 
-    if (meminfo->swap_total_kb >= meminfo->swap_free_kb) {
-        mem.swap_used_mb = (meminfo->swap_total_kb - meminfo->swap_free_kb) / 1024;
+    if (swap_total_kb >= swap_free_kb) {
+        mem.swap_used_mb = (swap_total_kb - swap_free_kb) / 1024;
     }
 
     return mem;
@@ -527,7 +603,20 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
         nl_map[stats.name] = &stats;
     }
 
-    for (const auto& ifname : monitored_interfaces_) {
+    // When no interfaces are configured, report all non-loopback interfaces
+    // present in the Netlink cache so the daemon works out of the box.
+    std::vector<std::string> iface_list;
+    if (monitored_interfaces_.empty()) {
+        for (const auto& stats : nl_stats) {
+            if (stats.name != "lo") {
+                iface_list.push_back(stats.name);
+            }
+        }
+    } else {
+        iface_list = monitored_interfaces_;
+    }
+
+    for (const auto& ifname : iface_list) {
         NetworkInterface iface;
         iface.ifname = ifname;
         iface.link = LinkState::Unknown;
