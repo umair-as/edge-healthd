@@ -4,6 +4,7 @@
 #include "config.hpp"
 #include "daemon.hpp"
 #include "log.hpp"
+#include "version.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -33,7 +34,7 @@ HelpColors help_colors() {
 void print_usage([[maybe_unused]] std::string_view program) {
     auto c = help_colors();
     std::cout
-        << c.bold << "edge-healthd" << c.reset << " " << c.dim << "0.1.0" << c.reset << "\n"
+        << c.bold << "edge-healthd" << c.reset << " " << c.dim << EDGE_HEALTHD_VERSION << c.reset << "\n"
         << c.dim << "Edge device health monitoring daemon" << c.reset << "\n"
         << "\n"
         << c.byellow << "USAGE:" << c.reset << "\n"
@@ -51,7 +52,7 @@ void print_usage([[maybe_unused]] std::string_view program) {
 
 void print_version() {
     auto c = help_colors();
-    std::cout << c.bold << "edge-healthd" << c.reset << " " << c.dim << "0.1.0" << c.reset << "\n";
+    std::cout << c.bold << "edge-healthd" << c.reset << " " << c.dim << EDGE_HEALTHD_VERSION << c.reset << "\n";
 }
 
 struct Args {

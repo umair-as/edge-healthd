@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(edge-healthd
-    VERSION 0.1.0
+    VERSION 0.4.0
     DESCRIPTION "Edge device health monitoring daemon"
     LANGUAGES CXX
 )
+
+configure_file(inc/version.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/inc/version.hpp @ONLY)
 
 # -----------------------------------------------------------------------------
 # C++ Standard and Compiler Requirements
@@ -162,6 +164,7 @@ add_library(edge-snapshot-core STATIC
 target_include_directories(edge-snapshot-core
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/inc>
         $<INSTALL_INTERFACE:inc>
 )
 
