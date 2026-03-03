@@ -1,33 +1,36 @@
 # edge-healthd
 
-[![CI](https://github.com/umair-uas/edge-healthd/actions/workflows/ci.yml/badge.svg)](https://github.com/umair-uas/edge-healthd/actions/workflows/ci.yml)
+[![CI](https://github.com/umair-as/edge-healthd/actions/workflows/ci.yml/badge.svg)](https://github.com/umair-as/edge-healthd/actions/workflows/ci.yml)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)]()
 
-A lightweight health monitoring daemon for resource-constrained edge gateways. It continuously collects device metrics via modular probes and writes atomic JSON snapshots to disk — designed for offline-first operation and fleet management integration.
+A lightweight health monitoring daemon for resource-constrained edge gateways. It collects device metrics via modular probes and writes an atomic JSON snapshot to tmpfs every collection cycle — designed for offline-first operation and fleet observability.
 
 ## Supported Platforms
 
-| Platform | Architecture |
-|----------|-------------|
-| VisionFive2 | riscv64 |
-| Raspberry Pi 5 | aarch64 |
-| i.MX93 EVK | aarch64 |
+| Platform | Architecture | Tested |
+|----------|-------------|--------|
+| Raspberry Pi 5 | aarch64 | ✓ Yocto `igw.0.1` |
+| VisionFive2 | riscv64 | build-tested |
+| i.MX93 EVK | aarch64 | build-tested |
 
 ## Features
 
-- **Boot health** — uptime, boot failures, consecutive failure tracking
-- **Systemd services** — unit states, restart loops, failure detection via D-Bus
-- **System resources** — CPU load, memory, disk, temperature, network (via Netlink)
-- **Time synchronization** — NTP lock status and offset
-- **Software updates** — version tracking, A/B slot status, update results
-- **Atomic writes** — snapshot file is always consistent (temp + fsync + rename)
-- **Systemd integration** — sd-notify, watchdog, journal-aware logging
+- **Boot health** — uptime, consecutive boot failure tracking via persistent state
+- **Systemd services** — unit states, restart counts, socket-activated service detection (e.g. `sshd.socket`)
+- **System resources** — CPU load, memory, disk mounts, temperature, network stats via event-driven Netlink (zero-poll)
+- **Network auto-discovery** — reports all non-loopback interfaces when `monitored_interfaces` is not configured
+- **Time synchronization** — NTP lock state via `systemd-timesyncd` D-Bus
+- **OTA updates** — RAUC A/B slot status, bundle version and timestamp via `de.pengutronix.rauc` D-Bus
+- **Device identity** — auto-reads `/proc/device-tree/serial-number` as stable hardware ID across re-images
+- **Atomic snapshot writes** — temp file + fsync + rename; reader never sees a partial write
+- **Flash wear reduction** — snapshot written to `/run/health/state.json` (tmpfs); persistent state on `/data`
+- **Systemd hardening** — `Type=notify`, watchdog heartbeat, `ProtectSystem=strict`, `NoNewPrivileges`, capability restrictions
 
 ## Architecture
 
-Six probes collect data from the kernel, D-Bus, and filesystem. The aggregator evaluates severity thresholds (ok / warn / crit) per subsystem and the writer atomically commits a JSON snapshot.
+Six probes feed an aggregator that evaluates per-subsystem severity thresholds (ok / warn / crit). The writer atomically commits the result as a JSON snapshot.
 
 ```mermaid
 graph TD
@@ -40,7 +43,10 @@ graph TD
         UP[UpdateProbe]
     end
 
-    NL[NetlinkMonitor<br/><i>zero-syscall network stats</i>] --> RP
+    NL[NetlinkMonitor<br/><i>event-driven, zero-poll</i>] --> RP
+    RAUC[de.pengutronix.rauc<br/><i>D-Bus</i>] --> UP
+    SD[org.freedesktop.systemd1<br/><i>D-Bus</i>] --> SP
+    TD[org.freedesktop.timedate1<br/><i>D-Bus</i>] --> TP
 
     DP --> AGG[Aggregator<br/><i>severity evaluation</i>]
     BP --> AGG
@@ -50,93 +56,175 @@ graph TD
     UP --> AGG
 
     AGG --> W[Writer<br/><i>atomic JSON snapshot</i>]
-    W --> OUT[/data/edge/health/state.json/]
+    W --> OUT[/run/health/state.json<br/><i>tmpfs</i>]
 
     DAEMON[SnapshotDaemon<br/><i>sd-notify · watchdog · signals</i>] -.->|orchestrates| AGG
 ```
 
 ## Snapshot Output
 
-The daemon writes a structured JSON snapshot to `/data/edge/health/state.json`:
+Written to `/run/health/state.json` (tmpfs) on every collection cycle. Example from a live RPi5 deployment:
 
 ```json
 {
   "schema": "edge.health.state",
   "schema_version": "1.0",
-  "generated_at": "2026-01-26T10:15:30Z",
-  "device": { "device_id": "vf2-001", "platform": "visionfive2", "arch": "riscv64" },
-  "boot": { "boot_ok": true, "uptime": 86400, "boot_fail_count": 0 },
-  "services": { "overall": "ok", "units": [ "..." ] },
-  "resources": { "cpu": { "load1": 0.12 }, "memory": { "used_mb": 312 }, "..." : "..." },
-  "time_sync": { "overall": "ok", "source": "ntp" },
-  "update": { "overall": "ok", "active_slot": "A" },
+  "generated_at": "2026-03-03T10:34:00Z",
+  "device": {
+    "device_id": "a9c9b3afbe71fc40",
+    "hostname": "iot-gateway",
+    "platform": "rpi5",
+    "arch": "aarch64",
+    "os": { "distro": "iotgw", "version": "igw.0.1", "kernel": "6.18.13-v8-16k-igw" }
+  },
+  "boot": { "boot_ok": true, "uptime": 3600, "boot_fail_count": 0 },
+  "services": {
+    "overall": "ok",
+    "units": [
+      { "name": "sshd.service", "state": "active", "result": "socket-activated", "severity": "ok" },
+      { "name": "mosquitto.service", "state": "active", "severity": "ok" }
+    ]
+  },
+  "resources": {
+    "cpu": { "load1": 0.0, "load5": 0.0, "load15": 0.05 },
+    "memory": { "mem_total_mb": 7923, "mem_used_mb": 201, "swap_used_mb": 0 },
+    "storage": [{ "mount": "/", "fs": "ext4", "used_pct": 41, "avail_mb": 1623 }],
+    "network": [
+      { "ifname": "wlan0", "link": "up", "ip": "192.168.28.50", "rx_bytes": 317020 },
+      { "ifname": "br0",   "link": "up", "ip": "192.168.0.82",  "rx_bytes": 34168369 }
+    ]
+  },
+  "time_sync": { "overall": "ok", "source": "ntp", "ntp": { "enabled": true, "state": "locked" } },
+  "update": {
+    "overall": "ok",
+    "active_slot": "B",
+    "last_update": {
+      "id": "r0/20260303085902",
+      "installed_at": "2026-03-03T09:19:39Z",
+      "result": "success",
+      "detail": "iot-gateway-raspberrypi5"
+    }
+  },
   "summary": { "severity": "ok", "reasons": [] }
 }
 ```
 
-## Quick Start
+### Severity levels
 
-### Requirements
+| `severity` | Meaning |
+|------------|---------|
+| `ok` | All monitored subsystems healthy |
+| `warn` | Degraded — service restarting, disk >80%, NTP unlocked |
+| `crit` | Action required — service failed, disk >95%, boot loop |
+| `unknown` | Probe could not collect data (D-Bus unavailable, etc.) |
 
-- C++23 compiler (GCC 13+ or Clang 17+)
-- CMake 3.20+, Ninja
-- libsystemd-dev, libmnl-dev, pkg-config
-- sdbus-c++ v2.0 (auto-fetched with `-DEDGE_FETCH_SDBUSCPP=ON`)
+## Building
 
-### Build
+### Native (development)
 
 ```bash
+# Requirements: cmake 3.20+, ninja, GCC 13+, libsystemd-dev, libmnl-dev, pkg-config
+
+# Debug build with tests and sanitizers
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DEDGE_BUILD_TESTS=ON -DEDGE_ENABLE_SANITIZERS=ON \
+  -DEDGE_FETCH_SDBUSCPP=ON
+cmake --build build
+
+# Run tests
+ctest --test-dir build --output-on-failure
+
+# Release build
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DEDGE_FETCH_SDBUSCPP=ON
 cmake --build build
 ```
 
-### Build Options
+### Cross-compile with Yocto SDK
+
+```bash
+# Source the SDK environment (sets CC, CXX, sysroot, etc.)
+source /path/to/sdk/environment-setup-cortexa76-oe-linux   # RPi5 / i.MX93
+# source /path/to/sdk/environment-setup-riscv64-oe-linux   # VisionFive2
+
+cmake -B build-target -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DEDGE_FETCH_SDBUSCPP=ON \
+  -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake
+cmake --build build-target
+```
+
+### Build options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `EDGE_BUILD_TESTS` | OFF | Build Catch2 unit tests |
-| `EDGE_ENABLE_SANITIZERS` | OFF | Enable ASan/UBSan (Debug builds) |
+| `EDGE_ENABLE_SANITIZERS` | OFF | ASan + UBSan (Debug builds only) |
 | `EDGE_ENABLE_LTO` | ON | Link-time optimization (Release builds) |
 | `EDGE_FETCH_SDBUSCPP` | OFF | Auto-fetch sdbus-c++ v2.0 via FetchContent |
-| `EDGE_WEB_UI` | OFF | Build optional web dashboard |
+| `EDGE_WEB_UI` | OFF | Build optional Go + Preact web dashboard |
 
 ## Usage
 
 ```bash
-edge-healthd                           # Run as daemon
-edge-healthd -f -v                     # Foreground with verbose logging
-edge-healthd --once                    # Single snapshot, then exit
-edge-healthd -c /path/to/config.json   # Custom config file
-edge-healthd --dump-config             # Print effective config and exit
+edge-healthd                         # Run as daemon (systemd-managed)
+edge-healthd -f -v                   # Foreground with verbose logging
+edge-healthd --once                  # Single snapshot then exit
+edge-healthd -c /path/to/conf.json   # Custom config file
+edge-healthd --dump-config           # Print effective config and exit
 ```
 
 ## Configuration
 
-Default config path: `/etc/edge/healthd.conf`
+Default: `/etc/edge/healthd.conf` (JSON). All fields are optional — the daemon runs with built-in defaults.
 
 ```json
 {
-  "device_id": "edge-001",
-  "platform": "visionfive2",
-  "snapshot_file": "/data/edge/health/state.json",
+  "device_id": "",
+  "platform": "rpi5",
   "collect_interval_sec": 60,
-  "monitored_services": ["sshd.service", "NetworkManager.service"],
+  "monitored_services": ["sshd.service", "NetworkManager.service", "mosquitto.service"],
   "monitored_mounts": ["/", "/data"],
+  "monitored_interfaces": [],
+  "enable_ntp": true,
+  "enable_thermal": true,
+  "enable_update_tracking": true,
   "thresholds": {
-    "cpu_load_warn": 80,
-    "mem_used_crit": 95
+    "cpu_load_warn": 80,  "cpu_load_crit": 95,
+    "mem_used_warn": 80,  "mem_used_crit": 95,
+    "disk_used_warn": 80, "disk_used_crit": 95,
+    "temp_warn_c": 70.0,  "temp_crit_c": 85.0,
+    "service_restart_warn": 3, "service_restart_crit": 10,
+    "boot_fail_warn": 1,  "boot_fail_crit": 3
   }
 }
 ```
+
+**Key defaults:**
+- `device_id` — auto-detected from `/proc/device-tree/serial-number`, then `/etc/machine-id`
+- `monitored_interfaces` — when empty, all non-loopback interfaces are reported automatically
+- `snapshot_file` — `/run/health/state.json` (tmpfs; override via `snapshot_file` key if needed)
+- `state_dir` — `/data/edge/health` (persistent boot/update state; survives reboots)
 
 See [`config/healthd.conf.example`](config/healthd.conf.example) for all options.
 
 ## Deployment
 
 ```bash
+# Install binary and service unit
 sudo cmake --install build
+
+# Enable and start
 sudo systemctl enable --now edge-healthd
+
+# Check status
+systemctl status edge-healthd
+journalctl -u edge-healthd -f
+
+# Read snapshot
+cat /run/health/state.json | jq .summary
 ```
+
+The service unit runs as an unprivileged `edgehealth` user with `ProtectSystem=strict`. The `/run/health` directory is created automatically by systemd via `RuntimeDirectory=health`.
 
 ## License
 
