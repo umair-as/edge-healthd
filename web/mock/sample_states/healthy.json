@@ -1,0 +1,158 @@
+{
+  "schema": "edge.health.state",
+  "schema_version": "1.0",
+  "generated_at": "2024-01-15T12:00:00Z",
+  "device": {
+    "device_id": "edge-dev-001",
+    "hostname": "edge-gateway-01",
+    "platform": "rpi5",
+    "arch": "aarch64",
+    "os": {
+      "distro": "Buildroot",
+      "version": "2024.02",
+      "build_id": "dev-20240115",
+      "kernel": "6.1.70-edge"
+    }
+  },
+  "boot": {
+    "boot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "last_boot_at": "2024-01-15T08:00:00Z",
+    "uptime": 14400,
+    "boot_ok": true,
+    "boot_fail_count": 0,
+    "last_reboot_reason": null
+  },
+  "services": {
+    "overall": "ok",
+    "units": [
+      {
+        "name": "edge-healthd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:01Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "edge-mqtt.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:02Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "edge-ota.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:03Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "chronyd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:04Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      }
+    ]
+  },
+  "resources": {
+    "sample_window_sec": 60,
+    "cpu": {
+      "load1": 0.45,
+      "load5": 0.38,
+      "load15": 0.32
+    },
+    "memory": {
+      "mem_total_mb": 4096,
+      "mem_used_mb": 1843,
+      "swap_used_mb": 0
+    },
+    "storage": [
+      {
+        "mount": "/",
+        "fs": "ext4",
+        "used_pct": 35,
+        "avail_mb": 2048
+      },
+      {
+        "mount": "/data",
+        "fs": "ext4",
+        "used_pct": 20,
+        "avail_mb": 8192
+      }
+    ],
+    "thermal": [
+      {
+        "sensor": "cpu_thermal",
+        "temp_c": 45.2
+      },
+      {
+        "sensor": "gpu_thermal",
+        "temp_c": 42.1
+      }
+    ],
+    "network": [
+      {
+        "ifname": "eth0",
+        "link": "up",
+        "rx_bytes": 12345678,
+        "tx_bytes": 9876543,
+        "rx_packets": 98765,
+        "tx_packets": 87654,
+        "rx_dropped": 0,
+        "tx_dropped": 0,
+        "rx_err": 0,
+        "tx_err": 0,
+        "ip": "192.168.1.100",
+        "carrier": true,
+        "speed_mbps": 1000,
+        "duplex": "full"
+      }
+    ]
+  },
+  "time_sync": {
+    "overall": "ok",
+    "source": "ntp",
+    "ntp": {
+      "enabled": true,
+      "state": "locked",
+      "last_sync_at": "2024-01-15T11:55:00Z"
+    },
+    "ptp": {
+      "enabled": false,
+      "interface": null,
+      "offset_ns": null,
+      "rms_ns": null,
+      "state": null,
+      "last_sync_at": null,
+      "role": null
+    }
+  },
+  "update": {
+    "overall": "ok",
+    "active_slot": "A",
+    "last_update": {
+      "id": "update-2024-01-10-001",
+      "installed_at": "2024-01-10T12:00:00Z",
+      "result": "success",
+      "detail": null
+    }
+  },
+  "summary": {
+    "severity": "ok",
+    "reasons": ["all_ok"],
+    "notes": null
+  }
+}

@@ -1,0 +1,49 @@
+[Unit]
+Description=Edge Device Health Web UI
+Documentation=https://github.com/umair-as/edge-healthd
+After=network.target edge-healthd.service
+Wants=edge-healthd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/edge-healthd-ui \
+    -listen :8443 \
+    -state /data/edge/health/state.json \
+    -tls-cert /etc/edge/tls/cert.pem \
+    -tls-key /etc/edge/tls/key.pem
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+User=edgehealth
+Group=edgehealth
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+# Read-only access to health state and TLS credentials
+ReadOnlyPaths=/data/edge/health /etc/edge/tls
+
+# Network binding capability
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Resource limits (very lightweight)
+MemoryMax=30M
+CPUQuota=5%
+
+# System call filter
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

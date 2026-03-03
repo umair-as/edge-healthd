@@ -25,6 +25,7 @@ option(EDGE_BUILD_TESTS "Build unit tests" OFF)
 option(EDGE_ENABLE_SANITIZERS "Enable ASan + UBSan (Debug builds)" OFF)
 option(EDGE_ENABLE_LTO "Enable Link-Time Optimization (Release builds)" ON)
 option(EDGE_FETCH_SDBUSCPP "Fetch sdbus-c++ if not found" OFF)
+option(EDGE_WEB_UI "Build the web UI server" OFF)
 
 # -----------------------------------------------------------------------------
 # Compiler Warnings (strict by default)
@@ -251,6 +252,14 @@ if(EDGE_BUILD_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
+# Web UI (optional)
+# -----------------------------------------------------------------------------
+
+if(EDGE_WEB_UI)
+    add_subdirectory(web)
+endif()
+
+# -----------------------------------------------------------------------------
 # Installation
 # -----------------------------------------------------------------------------
 
@@ -301,4 +310,5 @@ message(STATUS "  libsystemd:      ${EDGE_HAS_SYSTEMD}")
 message(STATUS "  Build tests:     ${EDGE_BUILD_TESTS}")
 message(STATUS "  Sanitizers:      ${EDGE_ENABLE_SANITIZERS}")
 message(STATUS "  LTO:             ${EDGE_ENABLE_LTO}")
+message(STATUS "  Web UI:          ${EDGE_WEB_UI}")
 message(STATUS "")

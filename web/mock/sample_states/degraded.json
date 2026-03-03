@@ -1,0 +1,162 @@
+{
+  "schema": "edge.health.state",
+  "schema_version": "1.0",
+  "generated_at": "2024-01-15T12:00:00Z",
+  "device": {
+    "device_id": "edge-dev-001",
+    "hostname": "edge-gateway-01",
+    "platform": "rpi5",
+    "arch": "aarch64",
+    "os": {
+      "distro": "Buildroot",
+      "version": "2024.02",
+      "build_id": "dev-20240115",
+      "kernel": "6.1.70-edge"
+    }
+  },
+  "boot": {
+    "boot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "last_boot_at": "2024-01-15T08:00:00Z",
+    "uptime": 14400,
+    "boot_ok": true,
+    "boot_fail_count": 0,
+    "last_reboot_reason": null
+  },
+  "services": {
+    "overall": "warn",
+    "units": [
+      {
+        "name": "edge-healthd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:01Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "edge-mqtt.service",
+        "state": "active",
+        "severity": "warn",
+        "since": "2024-01-15T08:00:02Z",
+        "restart_count": 2,
+        "result": "success",
+        "detail": "Connection intermittent",
+        "log_excerpt": [
+          "Jan 15 11:45:01 edge edge-mqtt[1234]: Warning: Connection timeout to broker",
+          "Jan 15 11:45:05 edge edge-mqtt[1234]: Reconnecting to mqtt.example.com:8883",
+          "Jan 15 11:45:06 edge edge-mqtt[1234]: Connection re-established"
+        ]
+      },
+      {
+        "name": "edge-ota.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:03Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "chronyd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:04Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      }
+    ]
+  },
+  "resources": {
+    "sample_window_sec": 60,
+    "cpu": {
+      "load1": 1.85,
+      "load5": 1.52,
+      "load15": 1.23
+    },
+    "memory": {
+      "mem_total_mb": 4096,
+      "mem_used_mb": 3072,
+      "swap_used_mb": 128
+    },
+    "storage": [
+      {
+        "mount": "/",
+        "fs": "ext4",
+        "used_pct": 75,
+        "avail_mb": 512
+      },
+      {
+        "mount": "/data",
+        "fs": "ext4",
+        "used_pct": 45,
+        "avail_mb": 4096
+      }
+    ],
+    "thermal": [
+      {
+        "sensor": "cpu_thermal",
+        "temp_c": 68.5
+      },
+      {
+        "sensor": "gpu_thermal",
+        "temp_c": 62.3
+      }
+    ],
+    "network": [
+      {
+        "ifname": "eth0",
+        "link": "up",
+        "rx_bytes": 52345678,
+        "tx_bytes": 39876543,
+        "rx_packets": 398765,
+        "tx_packets": 287654,
+        "rx_dropped": 5,
+        "tx_dropped": 0,
+        "rx_err": 0,
+        "tx_err": 0,
+        "ip": "192.168.1.100",
+        "carrier": true,
+        "speed_mbps": 1000,
+        "duplex": "full"
+      }
+    ]
+  },
+  "time_sync": {
+    "overall": "ok",
+    "source": "ntp",
+    "ntp": {
+      "enabled": true,
+      "state": "locked",
+      "last_sync_at": "2024-01-15T11:55:00Z"
+    },
+    "ptp": {
+      "enabled": false,
+      "interface": null,
+      "offset_ns": null,
+      "rms_ns": null,
+      "state": null,
+      "last_sync_at": null,
+      "role": null
+    }
+  },
+  "update": {
+    "overall": "ok",
+    "active_slot": "A",
+    "last_update": {
+      "id": "update-2024-01-10-001",
+      "installed_at": "2024-01-10T12:00:00Z",
+      "result": "success",
+      "detail": null
+    }
+  },
+  "summary": {
+    "severity": "warn",
+    "reasons": ["service_degraded", "high_memory"],
+    "notes": "MQTT service experiencing intermittent connectivity"
+  }
+}

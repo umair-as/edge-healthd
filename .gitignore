@@ -38,3 +38,4 @@ _CPack_Packages/
 # OS files
 .DS_Store
 Thumbs.db
+web/server/server
