@@ -147,7 +147,7 @@ struct Config {
 // {
 //   "device_id": "vf2-001",
 //   "platform": "visionfive2",
-//   "snapshot_file": "/data/edge/health/state.json",
+//   "snapshot_file": "/run/health/state.json",
 //   "state_dir": "/data/edge/health",
 //   "collect_interval_sec": 60,
 //   "log_level": "info",
