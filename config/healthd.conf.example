@@ -9,7 +9,7 @@
   "sample_window_sec": 60,
 
   "monitored_services": [
-    "sshd.service",
+    "sshd.socket",
     "NetworkManager.service"
   ],
 

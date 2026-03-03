@@ -65,7 +65,7 @@ struct Config {
     // Monitored items (empty = auto-detect or skip)
     // ---------------------------------------------------------------------
     std::vector<std::string> monitored_services = {
-        "sshd.service",
+        "sshd.socket",
         "NetworkManager.service"
     };
 
@@ -152,7 +152,7 @@ struct Config {
 //   "collect_interval_sec": 60,
 //   "log_level": "info",
 //   "dbus_timeout_ms": 2000,
-//   "monitored_services": ["sshd.service", "NetworkManager.service"],
+//   "monitored_services": ["sshd.socket", "NetworkManager.service"],
 //   "monitored_mounts": ["/", "/data"],
 //   "monitored_interfaces": ["eth0"],
 //   "thresholds": {
