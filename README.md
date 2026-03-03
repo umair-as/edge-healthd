@@ -44,9 +44,9 @@ graph TD
     end
 
     NL[NetlinkMonitor] --> RP
-    RAUC[de.pengutronix.rauc D-Bus] --> UP
-    SD[org.freedesktop.systemd1 D-Bus] --> SP
-    TD[org.freedesktop.timedate1 D-Bus] --> TP
+    RAUC[RAUC D-Bus] --> UP
+    SD[systemd D-Bus] --> SP
+    TD[timedate1 D-Bus] --> TP
 
     DP --> AGG[Aggregator]
     BP --> AGG
@@ -56,9 +56,9 @@ graph TD
     UP --> AGG
 
     AGG --> W[Writer]
-    W --> OUT[/run/health/state.json]
+    W --> OUT[run/health/state.json on tmpfs]
 
-    DAEMON[SnapshotDaemon] -.->|sd-notify / watchdog| AGG
+    DAEMON[SnapshotDaemon] -.->|sd-notify + watchdog| AGG
 ```
 
 ## 📄 Snapshot Output
