@@ -11,7 +11,7 @@ Type=notify
 ExecStart=/usr/bin/edge-healthd
 Restart=on-failure
 RestartSec=10
-WatchdogSec=120
+WatchdogSec=150
 TimeoutStopSec=15
 
 # Journal routing
@@ -44,7 +44,9 @@ ProtectControlGroups=yes
 ProtectHostname=yes
 ProtectClock=yes
 ProtectProc=invisible
-ProcSubset=pid
+# Keep full /proc view for non-process metrics (e.g. /proc/meminfo).
+# Process visibility is still restricted by ProtectProc=invisible.
+ProcSubset=all
 
 # Privilege restrictions
 RestrictRealtime=yes

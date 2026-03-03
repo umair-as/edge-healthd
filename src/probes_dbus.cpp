@@ -219,6 +219,36 @@ ServiceUnit ServicesProbe::query_unit(const std::string& unit_name,
             unit.state = ServiceState::Active;
         } else if (active_state == "inactive") {
             unit.state = ServiceState::Inactive;
+
+            // For socket-activated services the .service unit is inactive while
+            // the .socket unit is listening — that is healthy, not a warning.
+            // If a corresponding .socket unit is active, treat the service as ok.
+            static constexpr std::string_view svc_suffix = ".service";
+            if (unit_name.size() > svc_suffix.size() &&
+                unit_name.compare(unit_name.size() - svc_suffix.size(),
+                                  svc_suffix.size(), svc_suffix) == 0) {
+                std::string socket_name =
+                    unit_name.substr(0, unit_name.size() - svc_suffix.size()) + ".socket";
+                try {
+                    sdbus::ObjectPath socket_path;
+                    manager->callMethod("GetUnit")
+                        .onInterface("org.freedesktop.systemd1.Manager")
+                        .withArguments(socket_name)
+                        .storeResultsTo(socket_path);
+                    auto socket_proxy = sdbus::createProxy(
+                        connection,
+                        sdbus::ServiceName("org.freedesktop.systemd1"),
+                        socket_path);
+                    auto socket_state_v = socket_proxy->getProperty("ActiveState")
+                                             .onInterface("org.freedesktop.systemd1.Unit");
+                    if (static_cast<std::string>(socket_state_v) == "active") {
+                        unit.state = ServiceState::Active;
+                        unit.result = "socket-activated";
+                    }
+                } catch (const sdbus::Error&) {
+                    // No matching .socket unit — leave state as Inactive
+                }
+            }
         } else if (active_state == "failed") {
             unit.state = ServiceState::Failed;
         } else if (active_state == "activating") {
