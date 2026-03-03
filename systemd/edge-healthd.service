@@ -34,6 +34,8 @@ ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ReadOnlyPaths=/proc /sys /etc
+RuntimeDirectory=health
+RuntimeDirectoryMode=0750
 ReadWritePaths=/data/edge/health
 
 # Kernel protection

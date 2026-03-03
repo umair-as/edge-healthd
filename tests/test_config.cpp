@@ -59,7 +59,7 @@ TEST_CASE("Config validation catches invalid interval", "[config]") {
 TEST_CASE("Config default paths", "[config]") {
     auto config = Config::defaults();
 
-    CHECK(config.snapshot_file == "/data/edge/health/state.json");
+    CHECK(config.snapshot_file == "/run/health/state.json");
     CHECK(config.state_dir == "/data/edge/health");
     CHECK(config.config_file == "/etc/edge/healthd.conf");
 }

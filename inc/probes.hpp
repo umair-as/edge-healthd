@@ -240,6 +240,8 @@ private:
 
     [[nodiscard]] std::optional<std::string> detect_active_slot() const;
     [[nodiscard]] std::optional<LastUpdate> load_last_update() const;
+    // Queries de.pengutronix.rauc D-Bus; returns true and populates status if RAUC is available.
+    [[nodiscard]] bool collect_rauc_update(UpdateStatus& status) const;
 };
 
 // -----------------------------------------------------------------------------

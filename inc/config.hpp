@@ -51,7 +51,7 @@ struct Config {
     // ---------------------------------------------------------------------
     // Paths
     // ---------------------------------------------------------------------
-    std::filesystem::path snapshot_file = "/data/edge/health/state.json";
+    std::filesystem::path snapshot_file = "/run/health/state.json";
     std::filesystem::path state_dir = "/data/edge/health";
     std::filesystem::path config_file = "/etc/edge/healthd.conf";
 
