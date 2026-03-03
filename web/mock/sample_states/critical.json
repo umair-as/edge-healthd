@@ -1,0 +1,185 @@
+{
+  "schema": "edge.health.state",
+  "schema_version": "1.0",
+  "generated_at": "2024-01-15T12:00:00Z",
+  "device": {
+    "device_id": "edge-dev-001",
+    "hostname": "edge-gateway-01",
+    "platform": "rpi5",
+    "arch": "aarch64",
+    "os": {
+      "distro": "Buildroot",
+      "version": "2024.02",
+      "build_id": "dev-20240115",
+      "kernel": "6.1.70-edge"
+    }
+  },
+  "boot": {
+    "boot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "last_boot_at": "2024-01-15T08:00:00Z",
+    "uptime": 14400,
+    "boot_ok": false,
+    "boot_fail_count": 2,
+    "last_reboot_reason": "watchdog"
+  },
+  "services": {
+    "overall": "crit",
+    "units": [
+      {
+        "name": "edge-healthd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2024-01-15T08:00:01Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "edge-mqtt.service",
+        "state": "active",
+        "severity": "warn",
+        "since": "2024-01-15T08:00:02Z",
+        "restart_count": 5,
+        "result": "success",
+        "detail": "Connection unstable",
+        "log_excerpt": [
+          "Jan 15 11:50:01 edge edge-mqtt[1234]: Error: Connection lost",
+          "Jan 15 11:50:10 edge edge-mqtt[1234]: Reconnecting...",
+          "Jan 15 11:50:15 edge edge-mqtt[1234]: Connection restored"
+        ]
+      },
+      {
+        "name": "edge-ota.service",
+        "state": "failed",
+        "severity": "crit",
+        "since": "2024-01-15T11:30:00Z",
+        "restart_count": 3,
+        "result": "exit-code",
+        "detail": "Process exited with code 1",
+        "log_excerpt": [
+          "Jan 15 11:30:00 edge edge-ota[5678]: Error: Failed to download update manifest",
+          "Jan 15 11:30:01 edge edge-ota[5678]: HTTP 503: Service Unavailable",
+          "Jan 15 11:30:02 edge systemd[1]: edge-ota.service: Main process exited, code=exited, status=1/FAILURE",
+          "Jan 15 11:30:02 edge systemd[1]: edge-ota.service: Failed with result 'exit-code'"
+        ]
+      },
+      {
+        "name": "chronyd.service",
+        "state": "active",
+        "severity": "warn",
+        "since": "2024-01-15T08:00:04Z",
+        "restart_count": 1,
+        "result": "success",
+        "detail": "No NTP sources reachable",
+        "log_excerpt": [
+          "Jan 15 11:55:00 edge chronyd[2345]: No valid NTP sources"
+        ]
+      }
+    ]
+  },
+  "resources": {
+    "sample_window_sec": 60,
+    "cpu": {
+      "load1": 3.85,
+      "load5": 3.12,
+      "load15": 2.78
+    },
+    "memory": {
+      "mem_total_mb": 4096,
+      "mem_used_mb": 3788,
+      "swap_used_mb": 512
+    },
+    "storage": [
+      {
+        "mount": "/",
+        "fs": "ext4",
+        "used_pct": 95,
+        "avail_mb": 102
+      },
+      {
+        "mount": "/data",
+        "fs": "ext4",
+        "used_pct": 78,
+        "avail_mb": 1843
+      }
+    ],
+    "thermal": [
+      {
+        "sensor": "cpu_thermal",
+        "temp_c": 82.5
+      },
+      {
+        "sensor": "gpu_thermal",
+        "temp_c": 78.3
+      }
+    ],
+    "network": [
+      {
+        "ifname": "eth0",
+        "link": "up",
+        "rx_bytes": 152345678,
+        "tx_bytes": 89876543,
+        "rx_packets": 1098765,
+        "tx_packets": 887654,
+        "rx_dropped": 125,
+        "tx_dropped": 8,
+        "rx_err": 12,
+        "tx_err": 3,
+        "ip": "192.168.1.100",
+        "carrier": true,
+        "speed_mbps": 100,
+        "duplex": "half"
+      },
+      {
+        "ifname": "wlan0",
+        "link": "down",
+        "rx_bytes": 0,
+        "tx_bytes": 0,
+        "rx_packets": 0,
+        "tx_packets": 0,
+        "rx_dropped": 0,
+        "tx_dropped": 0,
+        "rx_err": 0,
+        "tx_err": 0,
+        "ip": null,
+        "carrier": false,
+        "speed_mbps": null,
+        "duplex": null
+      }
+    ]
+  },
+  "time_sync": {
+    "overall": "warn",
+    "source": "ntp",
+    "ntp": {
+      "enabled": true,
+      "state": "free_running",
+      "last_sync_at": "2024-01-15T10:00:00Z"
+    },
+    "ptp": {
+      "enabled": false,
+      "interface": null,
+      "offset_ns": null,
+      "rms_ns": null,
+      "state": null,
+      "last_sync_at": null,
+      "role": null
+    }
+  },
+  "update": {
+    "overall": "crit",
+    "active_slot": "A",
+    "last_update": {
+      "id": "update-2024-01-14-001",
+      "installed_at": "2024-01-14T18:00:00Z",
+      "result": "failed",
+      "detail": "Update verification failed - rollback initiated"
+    }
+  },
+  "summary": {
+    "severity": "crit",
+    "reasons": ["service:edge-ota.service:failed", "high_memory", "high_storage", "time_sync_issue", "update_failed"],
+    "notes": "Critical: OTA service failed, disk nearly full, NTP not synced"
+  }
+}

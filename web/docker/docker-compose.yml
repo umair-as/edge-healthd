@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Frontend dev server with HMR
+  ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: ui
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../ui:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://server:8080
+      - VITE_WS_URL=ws://server:8080
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - server
+
+  # Go server with hot reload
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../server:/app
+      - mock-data:/data/edge/health
+    command: >
+      sh -c "go run . -listen :8080 -state /data/edge/health/state.json -local-only=false"
+    depends_on:
+      - mock
+
+  # Mock data generator
+  mock:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: mock
+    volumes:
+      - ../mock:/app
+      - mock-data:/data/edge/health
+    command: python generate_state.py --output /data/edge/health/state.json --interval 5
+
+volumes:
+  mock-data:

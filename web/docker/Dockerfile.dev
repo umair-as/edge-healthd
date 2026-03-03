@@ -1,0 +1,55 @@
+# Multi-stage Dockerfile for development
+
+# ============================================
+# UI development stage
+# ============================================
+FROM node:20-alpine AS ui
+
+WORKDIR /app
+
+# Install dependencies first for better caching
+COPY ui/package*.json ./
+RUN npm ci
+
+# Copy source (volume mount will override in dev)
+COPY ui/ .
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
+# ============================================
+# Server development stage
+# ============================================
+FROM golang:1.23-alpine AS server
+
+WORKDIR /app
+
+# Copy go.mod and download dependencies
+COPY server/go.mod server/go.sum* ./
+RUN go mod download
+
+# Copy source (volume mount will override in dev)
+COPY server/ .
+
+# Create empty dist for embedding
+RUN mkdir -p dist && echo '<!DOCTYPE html><html><body>Dev mode</body></html>' > dist/index.html
+
+EXPOSE 8080
+
+CMD ["go", "run", "."]
+
+# ============================================
+# Mock data generator stage
+# ============================================
+FROM python:3.11-alpine AS mock
+
+WORKDIR /app
+
+# Copy mock data generator
+COPY mock/ .
+
+# Create data directory
+RUN mkdir -p /data/edge/health
+
+CMD ["python", "generate_state.py", "--output", "/data/edge/health/state.json"]
