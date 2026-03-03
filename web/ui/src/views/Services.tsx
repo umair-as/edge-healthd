@@ -42,7 +42,7 @@ export function Services() {
                   </div>
                   <div class="flex items-center gap-3">
                     {service.restart_count > 0 && (
-                      <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-slate-700 rounded-full">
+                      <span class="text-xs px-2 py-1 bg-gray-100 dark:bg-dark-card rounded-full">
                         {service.restart_count} restarts
                       </span>
                     )}
@@ -88,7 +88,7 @@ export function Services() {
               {isExpanded && hasLogs && (
                 <div class="mt-3 pt-3 border-t border-gray-200 dark:border-dark-border">
                   <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Recent logs:</p>
-                  <pre class="text-xs bg-gray-100 dark:bg-slate-900 p-3 rounded overflow-x-auto max-h-48">
+                  <pre class="text-xs bg-gray-100 dark:bg-dark-bg p-3 rounded overflow-x-auto max-h-48">
                     {service.log_excerpt!.join('\n')}
                   </pre>
                 </div>

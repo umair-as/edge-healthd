@@ -72,7 +72,7 @@ function NavButton({ item, isActive, onClick }: { item: NavItem; isActive: boole
       class={`flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 cursor-pointer ${
         isActive
           ? 'bg-accent-muted text-accent border-l-2 border-accent pl-[14px]'
-          : 'text-slate-400 hover:text-slate-100 hover:bg-white/5 border-l-2 border-transparent pl-[14px]'
+          : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-100 hover:bg-gray-100 dark:hover:bg-white/5 border-l-2 border-transparent pl-[14px]'
       }`}
     >
       {item.icon}
@@ -87,7 +87,7 @@ export function Nav() {
   return (
     <>
       {/* Desktop sidebar */}
-      <nav class="hidden md:flex flex-col w-52 shrink-0 bg-dark-surface border-r border-dark-border py-3 px-2 gap-0.5">
+      <nav class="hidden md:flex flex-col w-52 shrink-0 bg-gray-100 dark:bg-dark-surface border-r border-gray-200 dark:border-dark-border py-3 px-2 gap-0.5">
         {navItems.map((item) => (
           <NavButton
             key={item.path}
@@ -99,7 +99,7 @@ export function Nav() {
       </nav>
 
       {/* Mobile bottom bar */}
-      <nav class="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-dark-surface border-t border-dark-border flex">
+      <nav class="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white dark:bg-dark-surface border-t border-gray-200 dark:border-dark-border flex">
         {navItems.map((item) => {
           const isActive = currentPath === item.path;
           return (
@@ -108,7 +108,7 @@ export function Nav() {
               onClick={() => route(item.path)}
               aria-label={item.label}
               class={`flex flex-col items-center justify-center flex-1 py-2 gap-1 text-xs cursor-pointer transition-colors duration-150 ${
-                isActive ? 'text-accent' : 'text-slate-400'
+                isActive ? 'text-accent' : 'text-gray-400 dark:text-slate-400'
               }`}
             >
               {item.icon}

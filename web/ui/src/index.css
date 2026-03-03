@@ -23,16 +23,16 @@ html {
 }
 
 .dark ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: #1e1e1e;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: #3e3e3e;
   border-radius: 4px;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: #525252;
 }
 
 /* Status pulse animation */

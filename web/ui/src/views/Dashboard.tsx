@@ -48,7 +48,7 @@ export function Dashboard() {
               {reasons.map((reason) => (
                 <span
                   key={reason}
-                  class="px-2 py-1 text-xs bg-gray-100 dark:bg-slate-700 rounded-full"
+                  class="px-2 py-1 text-xs bg-gray-100 dark:bg-dark-card rounded-full"
                 >
                   {reason}
                 </span>

@@ -4,21 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Edge Device Health Dashboard" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#141414" />
     <title>Edge Health</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body class="bg-gray-100 dark:bg-dark-bg text-gray-900 dark:text-gray-100">
-    <!-- Apply saved theme before app boots to prevent flash -->
+    <!-- Apply saved theme; default to dark if no preference set -->
     <script>
       (function() {
-        var theme = localStorage.getItem('theme');
-        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (theme === 'light') {
+        var t = localStorage.getItem('theme');
+        if (t === 'light') {
           document.documentElement.classList.remove('dark');
         } else {
+          // Migrate any stale non-dark value to dark
+          if (!t) localStorage.setItem('theme', 'dark');
           document.documentElement.classList.add('dark');
         }
       })();

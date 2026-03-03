@@ -54,7 +54,7 @@ export function Network() {
 
             {/* IP */}
             {iface.ip && (
-              <div class="mb-4 p-2 bg-gray-50 dark:bg-slate-800 rounded">
+              <div class="mb-4 p-2 bg-gray-50 dark:bg-dark-card rounded">
                 <span class="text-xs text-gray-500 dark:text-gray-400">IP Address</span>
                 <p class="font-mono text-sm">{iface.ip}</p>
               </div>

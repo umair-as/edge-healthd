@@ -23,13 +23,13 @@ export default {
         'severity-crit': '#ef4444',    // red-500
         'severity-unknown': '#6b7280', // gray-500
 
-        // Dark mode — OLED palette
-        'dark-bg': '#0f172a',          // slate-900  — page background
-        'dark-surface': '#0d1523',     // even darker — sidebar / header
-        'dark-card': '#1a2438',        // card surface
-        'dark-card-hover': '#1e293b',  // card hover
-        'dark-border': '#263047',      // border
-        'dark-border-subtle': '#1a2438', // barely-there border
+        // Dark mode — neutral grey palette
+        'dark-bg': '#141414',          // page background — near-black
+        'dark-surface': '#1e1e1e',     // sidebar / header — VS Code grey
+        'dark-card': '#242424',        // card surface
+        'dark-card-hover': '#2c2c2c',  // card hover
+        'dark-border': '#363636',      // border
+        'dark-border-subtle': '#2a2a2a', // barely-there border
       },
       boxShadow: {
         'card-dark': '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
