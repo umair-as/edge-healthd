@@ -64,26 +64,63 @@ TEST_CASE("Aggregator computes overall severity", "[aggregator]") {
 
     SECTION("All OK means overall OK") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
+            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Ok);
     }
 
     SECTION("Any crit means overall crit") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Crit, Severity::Ok, Severity::Ok, Severity::Ok);
+            Severity::Ok, Severity::Crit, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Crit);
     }
 
     SECTION("Warn without crit means warn") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Warn, Severity::Ok, Severity::Warn, Severity::Ok);
+            Severity::Ok, Severity::Warn, Severity::Ok, Severity::Warn, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Warn);
     }
 
     SECTION("Unknown does not override ok") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Unknown, Severity::Ok);
+            Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Ok);
+    }
+
+    SECTION("Journal crit propagates to overall") {
+        auto overall = agg.compute_overall(
+            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Crit);
+        CHECK(overall == Severity::Crit);
+    }
+}
+
+TEST_CASE("Aggregator evaluates journal severity", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    SECTION("Unknown overall returns Unknown") {
+        JournalStatus journal;
+        journal.overall = Severity::Unknown;
+        CHECK(agg.evaluate_journal(journal) == Severity::Unknown);
+    }
+
+    SECTION("Ok overall returns Ok") {
+        JournalStatus journal;
+        journal.overall = Severity::Ok;
+        CHECK(agg.evaluate_journal(journal) == Severity::Ok);
+    }
+
+    SECTION("Warn overall returns Warn") {
+        JournalStatus journal;
+        journal.overall = Severity::Warn;
+        journal.error_count = 3;
+        CHECK(agg.evaluate_journal(journal) == Severity::Warn);
+    }
+
+    SECTION("Crit overall returns Crit") {
+        JournalStatus journal;
+        journal.overall = Severity::Crit;
+        journal.error_count = 1;
+        CHECK(agg.evaluate_journal(journal) == Severity::Crit);
     }
 }
 
@@ -104,8 +141,9 @@ TEST_CASE("Aggregator generates reasons", "[aggregator]") {
     ResourcesStatus resources;
     TimeSyncStatus time_sync;
     UpdateStatus update;
+    JournalStatus journal;
 
-    auto state = agg.aggregate(device, boot, services, resources, time_sync, update);
+    auto state = agg.aggregate(device, boot, services, resources, time_sync, update, journal);
 
     CHECK_FALSE(state.summary.reasons.empty());
     // Should include reason codes for boot failures and failed service

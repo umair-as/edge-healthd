@@ -73,6 +73,7 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     
     time_sync_probe_ = std::make_unique<TimeSyncProbe>(config_);
     update_probe_ = std::make_unique<UpdateProbe>(config_);
+    journal_probe_ = std::make_unique<JournalProbe>(config_);
 
     // Initialize aggregator and writer
     aggregator_ = std::make_unique<SnapshotAggregator>(config_);
@@ -151,6 +152,7 @@ void SnapshotDaemon::collection_cycle() {
     auto resources_result = resources_probe_->collect();
     auto time_sync_result = time_sync_probe_->collect();
     auto update_result = update_probe_->collect();
+    auto journal_result = journal_probe_->collect();
 
     // Log any collection errors
     if (!device_result) {
@@ -171,6 +173,9 @@ void SnapshotDaemon::collection_cycle() {
     if (!update_result) {
         log::probe_error("update", update_result.error().message);
     }
+    if (!journal_result) {
+        log::probe_error("journal", journal_result.error().message);
+    }
 
     // Aggregate (use partial aggregation to handle failures)
     auto state = aggregator_->aggregate_partial(
@@ -179,7 +184,8 @@ void SnapshotDaemon::collection_cycle() {
         services_result ? std::optional(*services_result) : std::nullopt,
         resources_result ? std::optional(*resources_result) : std::nullopt,
         time_sync_result ? std::optional(*time_sync_result) : std::nullopt,
-        update_result ? std::optional(*update_result) : std::nullopt
+        update_result ? std::optional(*update_result) : std::nullopt,
+        journal_result ? std::optional(*journal_result) : std::nullopt
     );
 
     // Write to file

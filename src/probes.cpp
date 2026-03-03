@@ -3,6 +3,7 @@
 
 #include "probes.hpp"
 #include "config.hpp"
+#include "journal.hpp"
 #include "netlink_monitor.hpp"
 
 #include <nlohmann/json.hpp>
@@ -32,6 +33,7 @@
 
 #ifdef EDGE_HAS_SYSTEMD
 #include <systemd/sd-id128.h>
+#include <systemd/sd-journal.h>
 #endif
 
 namespace edge {
@@ -740,6 +742,105 @@ std::optional<LastUpdate> UpdateProbe::load_last_update() const {
     } catch (...) {
         return std::nullopt;
     }
+}
+
+// -----------------------------------------------------------------------------
+// JournalProbe
+// -----------------------------------------------------------------------------
+
+JournalProbe::JournalProbe(const Config& config)
+    : config_(config) {}
+
+ProbeResult<JournalStatus> JournalProbe::collect() const {
+#ifdef EDGE_HAS_SYSTEMD
+    JournalStatus status;
+    status.overall = Severity::Ok;
+
+    const int effective_priority = config_.log_excerpt_min_priority.value_or(3);
+
+    sd_journal* journal = nullptr;
+    int ret = sd_journal_open(&journal, SD_JOURNAL_SYSTEM | SD_JOURNAL_CURRENT_USER);
+    if (ret < 0 || !journal) {
+        ret = sd_journal_open(&journal, SD_JOURNAL_LOCAL_ONLY);
+        if (ret < 0 || !journal) {
+            return status;
+        }
+    }
+
+    struct JournalGuard {
+        sd_journal* j;
+        ~JournalGuard() { if (j) sd_journal_close(j); }
+    } guard{journal};
+
+    ret = sd_journal_seek_tail(journal);
+    if (ret < 0) {
+        return status;
+    }
+
+    ret = sd_journal_previous(journal);
+    if (ret <= 0) {
+        return status;
+    }
+
+    const size_t max_scan = std::max<size_t>(
+        config_.log_excerpt_max_lines ? config_.log_excerpt_max_lines : 20, 200);
+
+    std::vector<JournalEntry> raw;
+    raw.reserve(64);
+
+    for (size_t i = 0; i < max_scan; ++i) {
+        // Read priority
+        int pri = 6;
+        const void* pdata = nullptr;
+        size_t plen = 0;
+        if (sd_journal_get_data(journal, "PRIORITY", &pdata, &plen) >= 0 && pdata) {
+            const char* pstr = static_cast<const char*>(pdata);
+            if (plen > 9 && std::strncmp(pstr, "PRIORITY=", 9) == 0) pstr += 9;
+            pri = std::atoi(pstr);
+        }
+
+        if (pri <= effective_priority) {
+            uint64_t usec = 0;
+            sd_journal_get_realtime_usec(journal, &usec);
+
+            const void* data = nullptr;
+            size_t length = 0;
+            std::string msg;
+            if (sd_journal_get_data(journal, "MESSAGE", &data, &length) >= 0 && data) {
+                const char* ptr = static_cast<const char*>(data);
+                if (length > 8 && std::strncmp(ptr, "MESSAGE=", 8) == 0) {
+                    ptr += 8;
+                    length -= 8;
+                }
+                msg.assign(ptr, ptr + std::min(length, static_cast<size_t>(1024)));
+            }
+            raw.push_back(JournalEntry{usec, pri, std::move(msg)});
+        }
+
+        ret = sd_journal_previous(journal);
+        if (ret <= 0) break;
+    }
+
+    status.error_count = static_cast<uint32_t>(raw.size());
+
+    // Determine overall severity from the collected entries
+    for (const auto& e : raw) {
+        if (e.priority <= 2) {
+            status.overall = Severity::Crit;
+            break;
+        }
+        if (e.priority <= 3) {
+            status.overall = Severity::Warn;
+        }
+    }
+
+    // Apply window/max_lines trimming to produce recent_errors
+    status.recent_errors = filter_journal_entries(config_, raw);
+
+    return status;
+#else
+    return JournalStatus{};
+#endif
 }
 
 } // namespace edge

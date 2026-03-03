@@ -73,6 +73,7 @@ private:
     std::unique_ptr<ResourcesProbe> resources_probe_;
     std::unique_ptr<TimeSyncProbe> time_sync_probe_;
     std::unique_ptr<UpdateProbe> update_probe_;
+    std::unique_ptr<JournalProbe> journal_probe_;
     std::unique_ptr<SnapshotAggregator> aggregator_;
     std::unique_ptr<SnapshotWriter> writer_;
     std::unique_ptr<NetlinkMonitor> nl_monitor_;  // Netlink monitor instance
