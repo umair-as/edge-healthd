@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+
+<!--
+  edge.health.Manager — D-Bus interface for edge-healthd
+  Bus name  : edge.health
+  Object path: /edge/health/manager
+
+  Interface summary:
+    Property  OverallSeverity : s (read)  — "ok" | "warn" | "crit" | "unknown"
+                                            Emits PropertiesChanged on every severity transition.
+    Method    TriggerSnapshot () → b      — Force an immediate collection cycle.
+                                            Returns true on success.
+    Signal    HealthAlarm (s, s, s)       — Emitted when severity degrades (ok→warn, *→crit).
+                                            Args: component, message, severity.
+-->
+
+<node name="/edge/health/manager">
+
+  <interface name="edge.health.Manager">
+
+    <property name="OverallSeverity" type="s" access="read">
+      <annotation name="org.freedesktop.DBus.Property.EmitsChangedSignal" value="true"/>
+    </property>
+
+    <method name="TriggerSnapshot">
+      <arg name="success" type="b" direction="out"/>
+    </method>
+
+    <signal name="HealthAlarm">
+      <arg name="component" type="s"/>
+      <arg name="message"   type="s"/>
+      <arg name="severity"  type="s"/>
+    </signal>
+
+  </interface>
+
+</node>

@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <thread>
 
+#include <sdbus-c++/sdbus-c++.h>
+
 #ifdef EDGE_HAS_SYSTEMD
 #include <systemd/sd-daemon.h>
 #endif
@@ -80,6 +82,27 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     aggregator_ = std::make_unique<SnapshotAggregator>(config_);
     writer_ = std::make_unique<SnapshotWriter>(config_.snapshot_file);
 
+    // Initialize D-Bus service (optional — daemon runs without it if bus is unavailable)
+    try {
+        dbus_connection_ = sdbus::createSystemBusConnection(
+            sdbus::ServiceName{"edge.health"});
+
+        health_manager_ = std::make_unique<HealthManager>(
+            *dbus_connection_,
+            [this]() {
+                {
+                    std::lock_guard lock(cv_mutex_);
+                    trigger_requested_.store(true);
+                }
+                cv_.notify_one();
+            });
+    } catch (const sdbus::Error& e) {
+        log::warn("D-Bus service unavailable, continuing without it: " +
+                  std::string(e.getMessage()));
+        dbus_connection_.reset();
+        health_manager_.reset();
+    }
+
     return std::nullopt;
 }
 
@@ -100,14 +123,25 @@ int SnapshotDaemon::run() {
     boot_probe_->mark_boot_success();
     start_watchdog_thread();
 
-    // Main loop
+    // Start D-Bus event loop in its own internal thread
+    if (dbus_connection_) {
+        dbus_connection_->enterEventLoopAsync();
+    }
+
+    // Main loop — wait for interval OR a TriggerSnapshot/shutdown wakeup
     while (!shutdown_requested_.load()) {
         if (g_shutdown_signal != 0) {
             request_shutdown();
             break;
         }
 
-        std::this_thread::sleep_for(config_.collect_interval);
+        {
+            std::unique_lock lock(cv_mutex_);
+            cv_.wait_for(lock, config_.collect_interval, [this] {
+                return shutdown_requested_.load() || trigger_requested_.load();
+            });
+            trigger_requested_.store(false);
+        }
 
         if (shutdown_requested_.load() || g_shutdown_signal != 0) {
             request_shutdown();
@@ -127,6 +161,10 @@ int SnapshotDaemon::run() {
 
 void SnapshotDaemon::request_shutdown() {
     shutdown_requested_.store(true);
+    cv_.notify_all();
+    if (dbus_connection_) {
+        dbus_connection_->leaveEventLoop();
+    }
 }
 
 void SnapshotDaemon::collect_now() {
@@ -194,14 +232,22 @@ void SnapshotDaemon::collection_cycle() {
         log::writer_error("Failed to write snapshot: " + result.error().message);
     }
 
-    // Update current state
+    // Update current state and capture severity transition
+    Severity prev_sev = last_severity_;
     {
         std::lock_guard lock(state_mutex_);
         current_state_ = std::move(state);
+        last_severity_ = current_state_.summary.severity;
+    }
+    const Severity new_sev = last_severity_;
+
+    // Push severity to D-Bus (emits PropertiesChanged and HealthAlarm as needed)
+    if (health_manager_) {
+        health_manager_->update_severity(new_sev, prev_sev);
     }
 
     // Log snapshot with severity
-    log::snapshot_collected(to_string(current_state_.summary.severity));
+    log::snapshot_collected(to_string(new_sev));
 
     update_watchdog_heartbeat();
 }
