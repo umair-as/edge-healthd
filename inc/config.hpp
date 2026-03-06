@@ -118,6 +118,11 @@ struct Config {
     // If not set, include all available messages.
     std::optional<uint64_t> log_excerpt_window_sec;
 
+    // Wall-clock budget for the entire journal scan (open + seek + iterate).
+    // If exceeded the probe returns whatever entries were collected so far and
+    // logs a warning.  Protects the collection cycle against slow/large journals.
+    std::chrono::milliseconds journal_scan_timeout{3000};
+
     // ---------------------------------------------------------------------
     // Factory methods
     // ---------------------------------------------------------------------
