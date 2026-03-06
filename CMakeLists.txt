@@ -159,6 +159,7 @@ add_library(edge-snapshot-core STATIC
     src/aggregator.cpp
     src/writer.cpp
     src/json.cpp
+    src/dbus_manager.cpp
 )
 
 target_include_directories(edge-snapshot-core
@@ -288,6 +289,39 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/edge
     RENAME healthd.conf.example
 )
+
+# D-Bus system bus policy (allows edgehealth user to own edge.health)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/config/edge-healthd-dbus.conf
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/dbus-1/system.d
+)
+
+# -----------------------------------------------------------------------------
+# D-Bus code generation (optional — only available in native builds)
+#
+# Regenerates inc/generated/HealthManagerAdaptor.hpp from the IDL XML.
+# The generated file is committed to the repo for cross-compilation builds.
+# Usage: cmake --build build --target edge-dbus-generate
+# -----------------------------------------------------------------------------
+
+if(NOT CMAKE_CROSSCOMPILING)
+    if(EDGE_FETCH_SDBUSCPP AND TARGET sdbus-c++-xml2cpp)
+        set(_XML2CPP_CMD $<TARGET_FILE:sdbus-c++-xml2cpp>)
+    else()
+        find_program(_XML2CPP_CMD sdbus-c++-xml2cpp)
+    endif()
+
+    if(_XML2CPP_CMD)
+        add_custom_target(edge-dbus-generate
+            COMMAND ${_XML2CPP_CMD}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/dbus/edge-health-manager.xml
+                    --adaptor=${CMAKE_CURRENT_SOURCE_DIR}/inc/generated/HealthManagerAdaptor.hpp
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/dbus/edge-health-manager.xml
+            COMMENT "Regenerating D-Bus adaptor from dbus/edge-health-manager.xml"
+            VERBATIM
+        )
+    endif()
+endif()
 
 # -----------------------------------------------------------------------------
 # CPack (for packaging)

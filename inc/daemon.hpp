@@ -5,6 +5,7 @@
 #pragma once
 
 #include "aggregator.hpp"
+#include "dbus_manager.hpp"
 #include "probes.hpp"
 #include "config.hpp"
 #include "log.hpp"
@@ -12,10 +13,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <thread>
+
+#include <sdbus-c++/sdbus-c++.h>
 
 namespace edge {
 
@@ -78,11 +82,23 @@ private:
     std::unique_ptr<SnapshotWriter> writer_;
     std::unique_ptr<NetlinkMonitor> nl_monitor_;  // Netlink monitor instance
 
+    // D-Bus service (optional — gracefully absent if bus unavailable)
+    // Declared before health_manager_ so connection outlives the adaptor.
+    std::unique_ptr<sdbus::IConnection> dbus_connection_;
+    std::unique_ptr<HealthManager>      health_manager_;
+
     // State
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdown_requested_{false};
+    std::atomic<bool> trigger_requested_{false};
     mutable std::mutex state_mutex_;
     SnapshotState current_state_;
+    Severity last_severity_{Severity::Unknown};
+
+    // Condition variable used to interrupt the collection sleep on demand
+    // (TriggerSnapshot D-Bus call or shutdown).
+    std::mutex              cv_mutex_;
+    std::condition_variable cv_;
 
     // Internal methods
     void collection_cycle();

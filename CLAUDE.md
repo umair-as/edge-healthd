@@ -33,6 +33,29 @@ python3 scripts/validate_schema.py /data/edge/health/state.json
 
 **System dependencies:** cmake (3.20+), ninja-build, GCC 13+ or Clang 17+ (C++23), libsystemd-dev, libmnl-dev, pkg-config. sdbus-c++ v2.0 can be auto-fetched with `EDGE_FETCH_SDBUSCPP=ON`.
 
+## Yocto SDK Cross-Compilation (Raspberry Pi 5)
+
+The project is cross-compiled for the IoT gateway using a Yocto-generated SDK:
+
+- **SDK path:** `/home/umair/yocto_resource/rpi5-sdk`
+- **Distro:** `iotgw igw.0.1`
+- **Target:** `cortexa76-oe-linux` (ARM64 / Cortex-A76, Raspberry Pi 5)
+- **Toolchain cmake file:** `sysroots/x86_64-oesdk-linux/usr/share/cmake/cortexa76-oe-linux-toolchain.cmake`
+
+```bash
+# Source the SDK environment (sets CC, CXX, SYSROOT, PKG_CONFIG_PATH, etc.)
+source /home/umair/yocto_resource/rpi5-sdk/environment-setup-cortexa76-oe-linux
+
+# Cross-compile release build (use a separate build dir to avoid clobbering native build)
+cmake -B build-rpi5 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=/home/umair/yocto_resource/rpi5-sdk/sysroots/x86_64-oesdk-linux/usr/share/cmake/cortexa76-oe-linux-toolchain.cmake \
+  -DEDGE_FETCH_SDBUSCPP=ON
+
+cmake --build build-rpi5
+```
+
+**Cross-compilation note for code generation tools:** When `EDGE_FETCH_SDBUSCPP=ON`, `sdbus-c++-xml2cpp` is compiled for the *target* (ARM64) and cannot run on the host (x86_64). Any generated files (e.g. D-Bus adaptor headers) must be pre-generated on a native build and committed to the repo. The CMake `edge-dbus-generate` custom target is only available in native builds.
+
 ## Architecture
 
 **Probe → Aggregator → Writer pipeline:**
