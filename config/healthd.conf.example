@@ -4,6 +4,7 @@
   "snapshot_file": "/run/health/state.json",
   "state_dir": "/data/edge/health",
   "collect_interval_sec": 60,
+  "time_sync_interval_sec": 300,
   "log_level": "info",
   "dbus_timeout_ms": 2000,
   "sample_window_sec": 60,
@@ -24,6 +25,7 @@
   ],
 
   "enable_ntp": true,
+  "enable_ptp": false,
   "enable_thermal": true,
   "enable_update_tracking": true,
 
@@ -39,7 +41,9 @@
     "service_restart_warn": 3,
     "service_restart_crit": 10,
     "boot_fail_warn": 1,
-    "boot_fail_crit": 3
+    "boot_fail_crit": 3,
+    "ptp_offset_warn_ns": 10000,
+    "ptp_offset_crit_ns": 100000
   }
   ,
   "log_excerpt": {

@@ -71,3 +71,42 @@ TEST_CASE("Config default monitored items", "[config]") {
     CHECK(config.monitored_mounts.size() == 2);
     CHECK(config.monitored_interfaces.size() == 2);
 }
+
+TEST_CASE("Config time_sync_interval defaults to 300s", "[config]") {
+    auto config = Config::defaults();
+
+    CHECK(config.time_sync_interval.count() == 300);
+}
+
+TEST_CASE("Config enable_ptp defaults to false", "[config]") {
+    auto config = Config::defaults();
+
+    CHECK(config.enable_ptp == false);
+}
+
+TEST_CASE("Config PTP threshold defaults", "[config]") {
+    auto config = Config::defaults();
+
+    CHECK(config.thresholds.ptp_offset_warn_ns == 10000);
+    CHECK(config.thresholds.ptp_offset_crit_ns == 100000);
+}
+
+TEST_CASE("Config validate rejects time_sync_interval_sec < 1", "[config]") {
+    auto config = Config::defaults();
+
+    config.time_sync_interval = std::chrono::seconds(0);
+
+    auto error = config.validate();
+    REQUIRE(error.has_value());
+    CHECK(error->find("time_sync_interval") != std::string::npos);
+}
+
+TEST_CASE("Config to_json_string includes time_sync_interval and enable_ptp", "[config]") {
+    auto config = Config::defaults();
+    auto json_str = config.to_json_string();
+
+    CHECK(json_str.find("\"time_sync_interval_sec\"") != std::string::npos);
+    CHECK(json_str.find("\"enable_ptp\"") != std::string::npos);
+    CHECK(json_str.find("\"ptp_offset_warn_ns\"") != std::string::npos);
+    CHECK(json_str.find("\"ptp_offset_crit_ns\"") != std::string::npos);
+}

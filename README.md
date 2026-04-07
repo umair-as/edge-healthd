@@ -21,7 +21,7 @@ A lightweight health monitoring daemon for resource-constrained edge gateways. I
 - ⚙️ **Systemd services** — unit states, restart counts, socket-activated service detection (e.g. `sshd.socket`)
 - 📊 **System resources** — CPU load, memory, disk mounts, temperature, network stats via event-driven Netlink (zero-poll)
 - 🌐 **Network auto-discovery** — reports all non-loopback interfaces when `monitored_interfaces` is not configured
-- 🕐 **Time synchronization** — NTP lock state via `systemd-timesyncd` D-Bus
+- 🕐 **Time synchronization** — NTP lock state via `org.freedesktop.timedate1` (systemd-timedated D-Bus); polling decoupled from `collect_interval_sec` via `time_sync_interval_sec` (default 300 s) to avoid timedated churn
 - 📦 **OTA updates** — RAUC A/B slot status, bundle version and timestamp via `de.pengutronix.rauc` D-Bus
 - 🔖 **Device identity** — auto-reads `/proc/device-tree/serial-number` as stable hardware ID across re-images
 - ⚛️ **Atomic snapshot writes** — temp file + fsync + rename; reader never sees a partial write
