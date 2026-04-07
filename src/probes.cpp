@@ -4,6 +4,7 @@
 #include "probes.hpp"
 #include "config.hpp"
 #include "journal.hpp"
+#include "log.hpp"
 #include "netlink_monitor.hpp"
 
 #include <nlohmann/json.hpp>
@@ -757,6 +758,8 @@ ProbeResult<JournalStatus> JournalProbe::collect() const {
     status.overall = Severity::Ok;
 
     const int effective_priority = config_.log_excerpt_min_priority.value_or(3);
+    const auto deadline =
+        std::chrono::steady_clock::now() + config_.journal_scan_timeout;
 
     sd_journal* journal = nullptr;
     int ret = sd_journal_open(&journal, SD_JOURNAL_SYSTEM | SD_JOURNAL_CURRENT_USER);
@@ -771,6 +774,13 @@ ProbeResult<JournalStatus> JournalProbe::collect() const {
         sd_journal* j;
         ~JournalGuard() { if (j) sd_journal_close(j); }
     } guard{journal};
+
+    // Check budget after open — sd_journal_open() itself can block on large journals.
+    if (std::chrono::steady_clock::now() >= deadline) {
+        log::warn("journal scan skipped: sd_journal_open exceeded timeout ("
+                  + std::to_string(config_.journal_scan_timeout.count()) + " ms)");
+        return status;
+    }
 
     ret = sd_journal_seek_tail(journal);
     if (ret < 0) {
@@ -789,6 +799,15 @@ ProbeResult<JournalStatus> JournalProbe::collect() const {
     raw.reserve(64);
 
     for (size_t i = 0; i < max_scan; ++i) {
+        // Enforce deadline on every iteration — sd_journal_previous() cost is
+        // proportional to the number of rotated journal files on disk.
+        if (std::chrono::steady_clock::now() >= deadline) {
+            log::warn("journal scan timeout after " + std::to_string(i)
+                      + " entries (budget: "
+                      + std::to_string(config_.journal_scan_timeout.count()) + " ms)");
+            break;
+        }
+
         // Read priority
         int pri = 6;
         const void* pdata = nullptr;

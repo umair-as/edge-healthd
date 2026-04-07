@@ -126,6 +126,10 @@ Config Config::load(const std::filesystem::path& path) {
         if (le.contains("window_sec")) {
             config.log_excerpt_window_sec = le["window_sec"].get<uint64_t>();
         }
+        if (le.contains("scan_timeout_ms")) {
+            config.journal_scan_timeout =
+                std::chrono::milliseconds(le["scan_timeout_ms"].get<int>());
+        }
     }
 
     // Thresholds
@@ -204,6 +208,10 @@ std::optional<std::string> Config::validate() const {
         return "log_excerpt.max_lines must be between 1 and 1000";
     }
 
+    if (journal_scan_timeout.count() < 100) {
+        return "log_excerpt.scan_timeout_ms must be at least 100";
+    }
+
     if (thresholds.cpu_load_warn >= thresholds.cpu_load_crit) {
         return "cpu_load_warn must be less than cpu_load_crit";
     }
@@ -272,6 +280,7 @@ std::string Config::to_json_string(int indent) const {
     le["max_lines"] = log_excerpt_max_lines;
     if (log_excerpt_min_priority) le["min_priority"] = *log_excerpt_min_priority;
     if (log_excerpt_window_sec) le["window_sec"] = *log_excerpt_window_sec;
+    le["scan_timeout_ms"] = journal_scan_timeout.count();
 
     return json.dump(indent);
 }
