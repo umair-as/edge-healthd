@@ -54,6 +54,11 @@ std::optional<std::string> SnapshotDaemon::initialize() {
         return "Failed to create state directory: " + ec.message();
     }
 
+    // Warn about unimplemented PTP probe
+    if (config_.enable_ptp) {
+        log::warn("enable_ptp=true in config but PTP probe is not yet implemented; ignoring");
+    }
+
     // Initialize NetlinkMonitor first
     nl_monitor_ = std::make_unique<NetlinkMonitor>();
     if (!nl_monitor_->init()) {
@@ -241,9 +246,10 @@ void SnapshotDaemon::collection_cycle() {
     }
     const Severity new_sev = last_severity_;
 
-    // Push severity to D-Bus (emits PropertiesChanged and HealthAlarm as needed)
+    // Push severity and cached logs to D-Bus manager.
     if (health_manager_) {
         health_manager_->update_severity(new_sev, prev_sev);
+        health_manager_->update_recent_logs(current_state_.journal.recent_errors);
     }
 
     // Log snapshot with severity

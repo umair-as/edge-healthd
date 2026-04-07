@@ -9,6 +9,7 @@
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace edge {
 namespace health {
@@ -34,6 +35,7 @@ protected:
     void registerAdaptor()
     {
         m_object.addVTable( sdbus::registerMethod("TriggerSnapshot").withOutputParamNames("success").implementedAs([this](){ return this->TriggerSnapshot(); })
+                          , sdbus::registerMethod("GetRecentLogs").withInputParamNames("max_lines").withOutputParamNames("logs").implementedAs([this](uint32_t max_lines){ return this->GetRecentLogs(max_lines); })
                           , sdbus::registerSignal("HealthAlarm").withParameters<std::string, std::string, std::string>("component", "message", "severity")
                           , sdbus::registerProperty("OverallSeverity").withGetter([this](){ return this->OverallSeverity(); }).withUpdateBehavior(sdbus::Flags::EMITS_CHANGE_SIGNAL)
                           ).forInterface(INTERFACE_NAME);
@@ -47,6 +49,7 @@ public:
 
 private:
     virtual bool TriggerSnapshot() = 0;
+    virtual std::vector<std::string> GetRecentLogs(uint32_t max_lines) = 0;
 
 private:
     virtual std::string OverallSeverity() = 0;
