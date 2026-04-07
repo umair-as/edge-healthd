@@ -74,6 +74,10 @@ Config Config::load(const std::filesystem::path& path) {
     if (json.contains("sample_window_sec")) {
         config.sample_window_sec = json["sample_window_sec"].get<uint32_t>();
     }
+    if (json.contains("time_sync_interval_sec")) {
+        config.time_sync_interval = std::chrono::seconds(
+            json["time_sync_interval_sec"].get<int>());
+    }
 
     // Monitored items
     if (json.contains("monitored_services")) {
@@ -92,6 +96,9 @@ Config Config::load(const std::filesystem::path& path) {
     // Feature flags
     if (json.contains("enable_ntp")) {
         config.enable_ntp = json["enable_ntp"].get<bool>();
+    }
+    if (json.contains("enable_ptp")) {
+        config.enable_ptp = json["enable_ptp"].get<bool>();
     }
     if (json.contains("enable_thermal")) {
         config.enable_thermal = json["enable_thermal"].get<bool>();
@@ -167,6 +174,12 @@ Config Config::load(const std::filesystem::path& path) {
         if (t.contains("boot_fail_crit")) {
             config.thresholds.boot_fail_crit = t["boot_fail_crit"].get<uint32_t>();
         }
+        if (t.contains("ptp_offset_warn_ns")) {
+            config.thresholds.ptp_offset_warn_ns = t["ptp_offset_warn_ns"].get<uint32_t>();
+        }
+        if (t.contains("ptp_offset_crit_ns")) {
+            config.thresholds.ptp_offset_crit_ns = t["ptp_offset_crit_ns"].get<uint32_t>();
+        }
     }
 
     return config;
@@ -190,6 +203,10 @@ Config Config::defaults() {
 std::optional<std::string> Config::validate() const {
     if (collect_interval.count() < 1) {
         return "collect_interval must be at least 1 second";
+    }
+
+    if (time_sync_interval.count() < 1) {
+        return "time_sync_interval_sec must be at least 1";
     }
 
     if (!is_valid_log_level(log_level)) {
@@ -237,6 +254,7 @@ std::string Config::to_json_string(int indent) const {
     // Collection settings
     json["collect_interval_sec"] = collect_interval.count();
     json["sample_window_sec"] = sample_window_sec;
+    json["time_sync_interval_sec"] = time_sync_interval.count();
 
     // Runtime options (file-visible)
     json["log_level"] = log_level;
@@ -249,6 +267,7 @@ std::string Config::to_json_string(int indent) const {
 
     // Feature flags
     json["enable_ntp"] = enable_ntp;
+    json["enable_ptp"] = enable_ptp;
     json["enable_thermal"] = enable_thermal;
     json["enable_update_tracking"] = enable_update_tracking;
 
@@ -266,6 +285,8 @@ std::string Config::to_json_string(int indent) const {
     t["service_restart_crit"] = thresholds.service_restart_crit;
     t["boot_fail_warn"] = thresholds.boot_fail_warn;
     t["boot_fail_crit"] = thresholds.boot_fail_crit;
+    t["ptp_offset_warn_ns"] = thresholds.ptp_offset_warn_ns;
+    t["ptp_offset_crit_ns"] = thresholds.ptp_offset_crit_ns;
 
     // Log excerpt settings
     auto& le = json["log_excerpt"];

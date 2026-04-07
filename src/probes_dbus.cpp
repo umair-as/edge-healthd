@@ -347,6 +347,12 @@ ProbeResult<TimeSyncStatus> TimeSyncProbe::collect() const {
 }
 
 NtpStatus TimeSyncProbe::collect_ntp() const {
+    // Return cached result if still within TTL.
+    auto now = std::chrono::steady_clock::now();
+    if (ntp_cache_valid_ && now < ntp_cache_expires_) {
+        return ntp_cache_;
+    }
+
     NtpStatus ntp;
     try {
         auto connection = sdbus::createSystemBusConnection();
@@ -372,9 +378,14 @@ NtpStatus TimeSyncProbe::collect_ntp() const {
             ntp.state = TimeSyncState::FreeRunning;
         }
     } catch (const sdbus::Error&) {
+        // On error: do NOT update cache; return empty NtpStatus so severity degrades.
         return ntp;
     }
 
+    // Update cache on success.
+    ntp_cache_ = ntp;
+    ntp_cache_expires_ = now + config_.time_sync_interval;
+    ntp_cache_valid_ = true;
     return ntp;
 }
 

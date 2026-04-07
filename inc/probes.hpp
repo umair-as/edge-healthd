@@ -11,6 +11,7 @@
 
 #include "types.hpp"
 
+#include <chrono>
 #include <concepts>
 #include <expected>
 #include <filesystem>
@@ -212,6 +213,13 @@ public:
 
 private:
     const Config& config_;
+
+    // TTL cache — avoids activating systemd-timedated on every collection cycle.
+    // Mutable because collect() is const (Probe concept requirement).
+    // Thread safety: collect() is only called from the daemon main loop thread.
+    mutable NtpStatus ntp_cache_;
+    mutable std::chrono::steady_clock::time_point ntp_cache_expires_;
+    mutable bool ntp_cache_valid_ = false;
 
     [[nodiscard]] NtpStatus collect_ntp() const;
     [[nodiscard]] Severity evaluate_sync_severity(const TimeSyncStatus& status) const;

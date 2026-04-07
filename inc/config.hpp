@@ -35,6 +35,10 @@ struct Thresholds {
     // Boot tracking
     uint32_t boot_fail_warn = 1;
     uint32_t boot_fail_crit = 3;
+
+    // PTP offset thresholds (nanoseconds) — reserved for future PTP probe
+    uint32_t ptp_offset_warn_ns = 10000;
+    uint32_t ptp_offset_crit_ns = 100000;
 };
 
 // -----------------------------------------------------------------------------
@@ -60,6 +64,7 @@ struct Config {
     // ---------------------------------------------------------------------
     std::chrono::seconds collect_interval{60};          // How often to collect
     uint32_t sample_window_sec = 60;                    // Resource averaging window
+    std::chrono::seconds time_sync_interval{300};       // How often to query timedate1 (decoupled from collect_interval)
 
     // ---------------------------------------------------------------------
     // Monitored items (empty = auto-detect or skip)
@@ -83,6 +88,7 @@ struct Config {
     // Feature flags
     // ---------------------------------------------------------------------
     bool enable_ntp = true;                             // Monitor NTP sync
+    bool enable_ptp = false;                            // PTP config present; no probe implemented yet
     bool enable_thermal = true;                         // Monitor temperature
     bool enable_update_tracking = true;                 // Track update status
 
@@ -150,6 +156,7 @@ struct Config {
 //   "snapshot_file": "/run/health/state.json",
 //   "state_dir": "/data/edge/health",
 //   "collect_interval_sec": 60,
+//   "time_sync_interval_sec": 300,
 //   "log_level": "info",
 //   "dbus_timeout_ms": 2000,
 //   "monitored_services": ["sshd.socket", "NetworkManager.service"],
