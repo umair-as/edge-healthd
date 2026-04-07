@@ -12,6 +12,9 @@
                                             Emits PropertiesChanged on every severity transition.
     Method    TriggerSnapshot () → b      — Force an immediate collection cycle.
                                             Returns true on success.
+    Method    GetRecentLogs (u) → as      — Return up to max_lines recent journal errors from
+                                            the in-memory cache (no sd_journal_open overhead).
+                                            Entries are newest-first, pre-formatted strings.
     Signal    HealthAlarm (s, s, s)       — Emitted when severity degrades (ok→warn, *→crit).
                                             Args: component, message, severity.
 -->
@@ -26,6 +29,11 @@
 
     <method name="TriggerSnapshot">
       <arg name="success" type="b" direction="out"/>
+    </method>
+
+    <method name="GetRecentLogs">
+      <arg name="max_lines" type="u" direction="in"/>
+      <arg name="logs"      type="as" direction="out"/>
     </method>
 
     <signal name="HealthAlarm">

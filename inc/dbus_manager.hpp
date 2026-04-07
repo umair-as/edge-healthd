@@ -10,6 +10,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <sdbus-c++/sdbus-c++.h>
 
@@ -22,9 +23,9 @@ namespace edge {
 // Bus name  : edge.health
 // Object path: /edge/health/manager
 //
-// Thread safety: update_severity() may be called from the collection thread;
-// OverallSeverity() and TriggerSnapshot() are called from the sdbus event
-// loop thread.  A mutex guards severity_str_.
+// Thread safety: update_severity() and update_recent_logs() may be called from
+// the collection thread; all D-Bus callbacks run on the sdbus event-loop thread.
+// A single mutex guards all mutable state.
 // -----------------------------------------------------------------------------
 
 class HealthManager final
@@ -44,6 +45,10 @@ public:
     /// severity degradation (ok→warn, *→crit).
     void update_severity(Severity new_sev, Severity prev_sev);
 
+    /// Called by SnapshotDaemon after every collection cycle to refresh the
+    /// in-memory log cache served by GetRecentLogs(). No journal I/O.
+    void update_recent_logs(std::vector<std::string> logs);
+
 private:
     // --- Manager_adaptor pure-virtual implementations ---
 
@@ -53,11 +58,16 @@ private:
     /// Triggers an immediate snapshot collection; returns true on success.
     bool TriggerSnapshot() override;
 
+    /// Returns up to max_lines recent journal error strings from the in-memory
+    /// cache — no sd_journal_open() call, zero additional syscalls.
+    std::vector<std::string> GetRecentLogs(uint32_t max_lines) override;
+
     // --- Internal state ---
-    std::function<void()> on_trigger_;
-    mutable std::mutex    mutex_;
-    std::string           severity_str_{"unknown"};
-    Severity              last_sev_{Severity::Unknown};
+    std::function<void()>    on_trigger_;
+    mutable std::mutex       mutex_;
+    std::string              severity_str_{"unknown"};
+    Severity                 last_sev_{Severity::Unknown};
+    std::vector<std::string> logs_cache_;
 };
 
 } // namespace edge

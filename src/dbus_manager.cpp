@@ -4,6 +4,7 @@
 #include "dbus_manager.hpp"
 #include "log.hpp"
 
+#include <algorithm>
 #include <string>
 
 namespace edge {
@@ -49,7 +50,7 @@ HealthManager::~HealthManager()
 }
 
 // -----------------------------------------------------------------------------
-// Public API
+// Public API (called from collection thread)
 // -----------------------------------------------------------------------------
 
 void HealthManager::update_severity(Severity new_sev, Severity prev_sev)
@@ -82,6 +83,12 @@ void HealthManager::update_severity(Severity new_sev, Severity prev_sev)
     }
 }
 
+void HealthManager::update_recent_logs(std::vector<std::string> logs)
+{
+    std::lock_guard lock(mutex_);
+    logs_cache_ = std::move(logs);
+}
+
 // -----------------------------------------------------------------------------
 // Manager_adaptor overrides (called from sdbus event-loop thread)
 // -----------------------------------------------------------------------------
@@ -98,6 +105,16 @@ bool HealthManager::TriggerSnapshot()
         on_trigger_();
     }
     return true;
+}
+
+std::vector<std::string> HealthManager::GetRecentLogs(uint32_t max_lines)
+{
+    std::lock_guard lock(mutex_);
+    if (max_lines == 0 || logs_cache_.empty()) {
+        return {};
+    }
+    const auto count = std::min<size_t>(max_lines, logs_cache_.size());
+    return {logs_cache_.begin(), logs_cache_.begin() + static_cast<ptrdiff_t>(count)};
 }
 
 } // namespace edge
