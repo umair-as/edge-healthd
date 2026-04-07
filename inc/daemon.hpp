@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <thread>
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -123,14 +124,18 @@ namespace systemd {
 /// Check if running under systemd
 [[nodiscard]] bool is_systemd_managed();
 
-/// Notify systemd that service is ready
-void notify_ready();
+/// Notify systemd that service is ready; sets STATUS=v<version> in sd_notify
+/// so the version is visible in `systemctl status` without journalctl.
+void notify_ready(std::string_view version);
 
 /// Notify systemd watchdog (call periodically)
 void notify_watchdog();
 
 /// Notify systemd of stopping
 void notify_stopping();
+
+/// Update the STATUS field shown in `systemctl status` with live severity.
+void notify_status(std::string_view version, std::string_view severity);
 
 /// Get watchdog timeout (0 if not configured)
 [[nodiscard]] std::chrono::microseconds watchdog_timeout();

@@ -255,6 +255,9 @@ void SnapshotDaemon::collection_cycle() {
     // Log snapshot with severity
     log::snapshot_collected(to_string(new_sev));
 
+    // Keep systemctl status current: version + live severity visible without journalctl
+    systemd::notify_status(EDGE_HEALTHD_VERSION, to_string(new_sev));
+
     update_watchdog_heartbeat();
 }
 
@@ -264,7 +267,7 @@ void SnapshotDaemon::setup_signal_handlers() {
 }
 
 void SnapshotDaemon::notify_systemd_ready() {
-    systemd::notify_ready();
+    systemd::notify_ready(EDGE_HEALTHD_VERSION);
 }
 
 void SnapshotDaemon::start_watchdog_thread() {
@@ -337,9 +340,24 @@ bool is_systemd_managed() {
 #endif
 }
 
-void notify_ready() {
+void notify_ready(std::string_view version) {
 #ifdef EDGE_HAS_SYSTEMD
-    sd_notify(0, "READY=1");
+    // STATUS persists in systemctl status output — surfacing version avoids
+    // needing journalctl to identify what's running on the target.
+    sd_notifyf(0, "READY=1\nSTATUS=v%.*s — starting", static_cast<int>(version.size()), version.data());
+#else
+    (void)version;
+#endif
+}
+
+void notify_status(std::string_view version, std::string_view severity) {
+#ifdef EDGE_HAS_SYSTEMD
+    sd_notifyf(0, "STATUS=v%.*s — %.*s",
+               static_cast<int>(version.size()), version.data(),
+               static_cast<int>(severity.size()), severity.data());
+#else
+    (void)version;
+    (void)severity;
 #endif
 }
 
