@@ -110,3 +110,30 @@ TEST_CASE("Config to_json_string includes time_sync_interval and enable_ptp", "[
     CHECK(json_str.find("\"ptp_offset_warn_ns\"") != std::string::npos);
     CHECK(json_str.find("\"ptp_offset_crit_ns\"") != std::string::npos);
 }
+
+TEST_CASE("Config RTC defaults", "[config][rtc]") {
+    auto config = Config::defaults();
+
+    CHECK(config.enable_rtc == true);
+    CHECK(config.rtc_device == "/sys/class/rtc/rtc0");
+    CHECK(config.thresholds.rtc_voltage_warn_mv == 2700);
+    CHECK(config.thresholds.rtc_voltage_crit_mv == 2500);
+}
+
+TEST_CASE("Config to_json_string includes RTC fields", "[config][rtc]") {
+    auto config = Config::defaults();
+    auto json_str = config.to_json_string();
+
+    CHECK(json_str.find("\"enable_rtc\"") != std::string::npos);
+    CHECK(json_str.find("\"rtc_device\"") != std::string::npos);
+    CHECK(json_str.find("\"rtc_voltage_warn_mv\"") != std::string::npos);
+    CHECK(json_str.find("\"rtc_voltage_crit_mv\"") != std::string::npos);
+}
+
+TEST_CASE("Config RTC device path is configurable", "[config][rtc]") {
+    auto config = Config::defaults();
+    config.rtc_device = "/sys/class/rtc/rtc1";
+
+    CHECK(config.rtc_device == "/sys/class/rtc/rtc1");
+    CHECK(config.to_json_string().find("rtc1") != std::string::npos);
+}

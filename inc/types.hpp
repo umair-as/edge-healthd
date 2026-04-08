@@ -230,11 +230,20 @@ struct PtpStatus {
     std::optional<std::chrono::system_clock::time_point> last_sync_at;
     std::optional<std::string> role; // keep as string for v1
 };
+
+struct RtcStatus {
+    bool enabled = false;
+    bool hctosys = false;                    // RTC was used to set system clock at boot
+    std::optional<uint32_t> voltage_mv;      // backup battery voltage in millivolts
+    std::optional<int64_t> drift_sec;        // RTC vs system clock skew (seconds)
+};
+
 struct TimeSyncStatus {
     Severity overall = Severity::Unknown;
     TimeSyncSource source = TimeSyncSource::None;
     NtpStatus ntp;
     PtpStatus ptp;
+    RtcStatus rtc;
 };
 
 struct LastUpdate {

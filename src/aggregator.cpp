@@ -168,6 +168,12 @@ std::vector<std::string> SnapshotAggregator::generate_reasons(
         reasons.push_back("time_unsynced");
     }
 
+    if (time_sync.rtc.enabled && time_sync.rtc.voltage_mv) {
+        if (*time_sync.rtc.voltage_mv < t.rtc_voltage_warn_mv) {
+            reasons.push_back("rtc_battery_low");
+        }
+    }
+
     if (update.last_update && update.last_update->result == UpdateResult::Failed) {
         reasons.push_back("update_failed");
     }
