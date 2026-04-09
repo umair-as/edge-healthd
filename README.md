@@ -21,7 +21,7 @@ A lightweight health monitoring daemon for resource-constrained edge gateways. I
 - ⚙️ **Systemd services** — unit states, restart counts, socket-activated service detection (e.g. `sshd.socket`)
 - 📊 **System resources** — CPU load, memory, disk mounts, temperature, network stats via event-driven Netlink (zero-poll)
 - 🌐 **Network auto-discovery** — reports all non-loopback interfaces when `monitored_interfaces` is not configured
-- 🕐 **Time synchronization** — NTP lock state via `org.freedesktop.timedate1` (systemd-timedated D-Bus); polling decoupled from `collect_interval_sec` via `time_sync_interval_sec` (default 300 s) to avoid timedated churn
+- 🕐 **Time synchronization** — NTP lock state via `org.freedesktop.timedate1` (systemd-timedated); RTC battery voltage and clock drift via sysfs (`/sys/class/rtc/rtc0`); polling decoupled from `collect_interval_sec` via `time_sync_interval_sec` (default 300 s) to avoid timedated socket-activation churn
 - 📦 **OTA updates** — RAUC A/B slot status, bundle version and timestamp via `de.pengutronix.rauc` D-Bus
 - 🔖 **Device identity** — auto-reads `/proc/device-tree/serial-number` as stable hardware ID across re-images
 - ⚛️ **Atomic snapshot writes** — temp file + fsync + rename; reader never sees a partial write
@@ -94,7 +94,12 @@ Written to `/run/health/state.json` (tmpfs) on every collection cycle. Example f
       { "ifname": "br0",   "link": "up", "ip": "192.168.0.82",  "rx_bytes": 34168369 }
     ]
   },
-  "time_sync": { "overall": "ok", "source": "ntp", "ntp": { "enabled": true, "state": "locked" } },
+  "time_sync": {
+    "overall": "ok", "source": "ntp",
+    "ntp": { "enabled": true, "state": "locked", "last_sync_at": "2026-04-09T10:00:00Z" },
+    "ptp": { "enabled": false },
+    "rtc": { "enabled": true, "hctosys": true, "voltage_mv": 2999, "drift_sec": 1 }
+  },
   "update": {
     "overall": "ok",
     "active_slot": "B",
@@ -182,10 +187,15 @@ Default: `/etc/edge/healthd.conf` (JSON). All fields are optional — the daemon
   "device_id": "",
   "platform": "rpi5",
   "collect_interval_sec": 60,
-  "monitored_services": ["sshd.service", "NetworkManager.service", "mosquitto.service"],
+  "time_sync_interval_sec": 300,
+  "update_check_interval_sec": 1800,
+  "monitored_services": ["sshd.socket", "NetworkManager.service", "mosquitto.service"],
   "monitored_mounts": ["/", "/data"],
   "monitored_interfaces": [],
   "enable_ntp": true,
+  "enable_ptp": false,
+  "enable_rtc": true,
+  "rtc_device": "/sys/class/rtc/rtc0",
   "enable_thermal": true,
   "enable_update_tracking": true,
   "thresholds": {
@@ -194,7 +204,8 @@ Default: `/etc/edge/healthd.conf` (JSON). All fields are optional — the daemon
     "disk_used_warn": 80, "disk_used_crit": 95,
     "temp_warn_c": 70.0,  "temp_crit_c": 85.0,
     "service_restart_warn": 3, "service_restart_crit": 10,
-    "boot_fail_warn": 1,  "boot_fail_crit": 3
+    "boot_fail_warn": 1,  "boot_fail_crit": 3,
+    "rtc_voltage_warn_mv": 2700, "rtc_voltage_crit_mv": 2500
   }
 }
 ```
@@ -204,6 +215,14 @@ Default: `/etc/edge/healthd.conf` (JSON). All fields are optional — the daemon
 - `monitored_interfaces` — when empty, all non-loopback interfaces are reported automatically
 - `snapshot_file` — `/run/health/state.json` (tmpfs; override via `snapshot_file` key if needed)
 - `state_dir` — `/data/edge/health` (persistent boot/update state; survives reboots)
+
+**Polling intervals and scheduling:**
+- `collect_interval_sec` — master collection cadence; all per-cycle probes (services, resources, journal) run at this rate
+- `time_sync_interval_sec` — independent polling interval for `org.freedesktop.timedate1` (timedated) and RTC sysfs; avoids repeated timedated socket-activation on every collection cycle
+- `update_check_interval_sec` — independent polling interval for RAUC D-Bus; OTA status is rarely changing so a longer interval (default 1800 s) avoids unnecessary D-Bus churn
+- Device identity (OS release, machine-id, arch) is read once at startup and cached — it never changes at runtime
+
+> **Note:** the `Snapshot collected` journal log line is rate-limited to once every 5 minutes when severity is unchanged. This is intentional to reduce log noise. The actual collection cadence is `collect_interval_sec` (default 60 s) — do not use the log frequency to infer probe timing.
 
 See [`config/healthd.conf.example`](config/healthd.conf.example) for all options.
 
