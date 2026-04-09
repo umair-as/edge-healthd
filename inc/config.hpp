@@ -70,6 +70,7 @@ struct Config {
     std::chrono::seconds collect_interval{60};          // How often to collect
     uint32_t sample_window_sec = 60;                    // Resource averaging window
     std::chrono::seconds time_sync_interval{300};       // How often to query timedate1 (decoupled from collect_interval)
+    std::chrono::seconds update_check_interval{1800};   // How often to query RAUC D-Bus (updates are rare events)
 
     // ---------------------------------------------------------------------
     // Monitored items (empty = auto-detect or skip)

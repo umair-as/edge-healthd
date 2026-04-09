@@ -352,18 +352,12 @@ ProbeResult<TimeSyncStatus> TimeSyncProbe::collect() const {
 }
 
 RtcStatus TimeSyncProbe::collect_rtc() const {
-    auto now = std::chrono::steady_clock::now();
-    if (rtc_cache_valid_ && now < rtc_cache_expires_) {
-        return rtc_cache_;
-    }
-
     RtcStatus rtc;
     rtc.enabled = true;
 
     const auto base = config_.rtc_device;
 
     // hctosys: did the kernel set the system clock from this RTC at boot?
-    // Doesn't change after boot — preserved across cache refreshes via the cache itself.
     {
         std::ifstream f(base / "hctosys");
         int val = 0;
@@ -392,19 +386,10 @@ RtcStatus TimeSyncProbe::collect_rtc() const {
         }
     }
 
-    rtc_cache_ = rtc;
-    rtc_cache_expires_ = now + config_.time_sync_interval;
-    rtc_cache_valid_ = true;
     return rtc;
 }
 
 NtpStatus TimeSyncProbe::collect_ntp() const {
-    // Return cached result if still within TTL.
-    auto now = std::chrono::steady_clock::now();
-    if (ntp_cache_valid_ && now < ntp_cache_expires_) {
-        return ntp_cache_;
-    }
-
     NtpStatus ntp;
     try {
         auto connection = sdbus::createSystemBusConnection();
@@ -430,14 +415,10 @@ NtpStatus TimeSyncProbe::collect_ntp() const {
             ntp.state = TimeSyncState::FreeRunning;
         }
     } catch (const sdbus::Error&) {
-        // On error: do NOT update cache; return empty NtpStatus so severity degrades.
-        return ntp;
+        // On error: return empty NtpStatus so severity degrades.
+        // Daemon-level scheduling will retry on next due cycle.
     }
 
-    // Update cache on success.
-    ntp_cache_ = ntp;
-    ntp_cache_expires_ = now + config_.time_sync_interval;
-    ntp_cache_valid_ = true;
     return ntp;
 }
 

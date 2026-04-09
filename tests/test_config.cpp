@@ -111,6 +111,27 @@ TEST_CASE("Config to_json_string includes time_sync_interval and enable_ptp", "[
     CHECK(json_str.find("\"ptp_offset_crit_ns\"") != std::string::npos);
 }
 
+TEST_CASE("Config update_check_interval defaults to 1800s", "[config]") {
+    auto config = Config::defaults();
+
+    CHECK(config.update_check_interval.count() == 1800);
+}
+
+TEST_CASE("Config to_json_string includes update_check_interval_sec", "[config]") {
+    auto config = Config::defaults();
+
+    CHECK(config.to_json_string().find("\"update_check_interval_sec\"") != std::string::npos);
+}
+
+TEST_CASE("Config validate rejects update_check_interval_sec < 1", "[config]") {
+    auto config = Config::defaults();
+    config.update_check_interval = std::chrono::seconds{0};
+
+    auto error = config.validate();
+    REQUIRE(error.has_value());
+    CHECK(error->find("update_check_interval") != std::string::npos);
+}
+
 TEST_CASE("Config RTC defaults", "[config][rtc]") {
     auto config = Config::defaults();
 

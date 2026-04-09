@@ -214,19 +214,6 @@ public:
 private:
     const Config& config_;
 
-    // NTP TTL cache — avoids activating systemd-timedated on every collection cycle.
-    // Mutable because collect() is const (Probe concept requirement).
-    // Thread safety: collect() is only called from the daemon main loop thread.
-    mutable NtpStatus ntp_cache_;
-    mutable std::chrono::steady_clock::time_point ntp_cache_expires_;
-    mutable bool ntp_cache_valid_ = false;
-
-    // RTC TTL cache — shares time_sync_interval TTL; battery voltage is slow-moving.
-    // hctosys is read once at first call (doesn't change after boot).
-    mutable RtcStatus rtc_cache_;
-    mutable std::chrono::steady_clock::time_point rtc_cache_expires_;
-    mutable bool rtc_cache_valid_ = false;
-
     [[nodiscard]] NtpStatus collect_ntp() const;
     [[nodiscard]] RtcStatus collect_rtc() const;
     [[nodiscard]] Severity evaluate_sync_severity(const TimeSyncStatus& status) const;
