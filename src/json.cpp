@@ -290,6 +290,7 @@ void to_json(nlohmann::json& j, const SnapshotState& state) {
         {"schema", std::string(SnapshotState::schema)},
         {"schema_version", std::string(SnapshotState::schema_version)},
         {"generated_at", format_time(state.generated_at)},
+        {"cycle", state.cycle},
         {"device", state.device},
         {"boot", state.boot},
         {"services", state.services},

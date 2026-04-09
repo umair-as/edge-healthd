@@ -241,6 +241,8 @@ void SnapshotDaemon::collection_cycle() {
         last_known_good_.journal
     );
 
+    state.cycle = ++cycle_count_;
+
     // Write to file
     if (auto result = writer_->write(state); !result) {
         log::writer_error("Failed to write snapshot: " + result.error().message);
