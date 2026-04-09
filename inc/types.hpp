@@ -280,6 +280,9 @@ struct SnapshotState {
     static constexpr std::string_view schema = "edge.health.state";
     static constexpr std::string_view schema_version = "1.0";
     std::chrono::system_clock::time_point generated_at;
+    uint64_t cycle = 0;  // Monotonic counter incremented on every collection cycle.
+                         // Consumers can use this to confirm the daemon is collecting
+                         // without relying on the rate-limited "Snapshot collected" log.
 
     // Content
     DeviceInfo device;

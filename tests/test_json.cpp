@@ -147,6 +147,19 @@ TEST_CASE("JSON ptp.enabled false by default", "[json][ptp]") {
     CHECK(j["ptp"]["enabled"] == false);
 }
 
+TEST_CASE("JSON cycle field is serialized and increments", "[json]") {
+    SnapshotState state;
+    state.generated_at = std::chrono::system_clock::now();
+    state.cycle = 0;
+
+    auto j0 = nlohmann::json(state);
+    CHECK(j0["cycle"] == 0);
+
+    state.cycle = 42;
+    auto j42 = nlohmann::json(state);
+    CHECK(j42["cycle"] == 42);
+}
+
 TEST_CASE("JSON serialize_pretty produces indented output", "[json]") {
     SnapshotState state;
     state.generated_at = std::chrono::system_clock::now();

@@ -119,6 +119,11 @@ private:
     // or when a probe fails. Aggregated into every snapshot.
     SnapshotState last_known_good_;
 
+    // Monotonic cycle counter — incremented every collection_cycle(), serialized
+    // into SnapshotState::cycle so operators can confirm cadence without relying
+    // on the rate-limited "Snapshot collected" log entry.
+    uint64_t cycle_count_{0};
+
     // State
     std::atomic<bool> running_{false};
     std::atomic<bool> shutdown_requested_{false};
