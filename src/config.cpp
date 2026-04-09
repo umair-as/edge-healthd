@@ -100,6 +100,12 @@ Config Config::load(const std::filesystem::path& path) {
     if (json.contains("enable_ptp")) {
         config.enable_ptp = json["enable_ptp"].get<bool>();
     }
+    if (json.contains("enable_rtc")) {
+        config.enable_rtc = json["enable_rtc"].get<bool>();
+    }
+    if (json.contains("rtc_device")) {
+        config.rtc_device = json["rtc_device"].get<std::string>();
+    }
     if (json.contains("enable_thermal")) {
         config.enable_thermal = json["enable_thermal"].get<bool>();
     }
@@ -183,6 +189,12 @@ Config Config::load(const std::filesystem::path& path) {
         }
         if (t.contains("ptp_offset_crit_ns")) {
             config.thresholds.ptp_offset_crit_ns = t["ptp_offset_crit_ns"].get<uint32_t>();
+        }
+        if (t.contains("rtc_voltage_warn_mv")) {
+            config.thresholds.rtc_voltage_warn_mv = t["rtc_voltage_warn_mv"].get<uint32_t>();
+        }
+        if (t.contains("rtc_voltage_crit_mv")) {
+            config.thresholds.rtc_voltage_crit_mv = t["rtc_voltage_crit_mv"].get<uint32_t>();
         }
     }
 
@@ -276,6 +288,8 @@ std::string Config::to_json_string(int indent) const {
     // Feature flags
     json["enable_ntp"] = enable_ntp;
     json["enable_ptp"] = enable_ptp;
+    json["enable_rtc"] = enable_rtc;
+    json["rtc_device"] = rtc_device.string();
     json["enable_thermal"] = enable_thermal;
     json["enable_update_tracking"] = enable_update_tracking;
 
@@ -295,6 +309,8 @@ std::string Config::to_json_string(int indent) const {
     t["boot_fail_crit"] = thresholds.boot_fail_crit;
     t["ptp_offset_warn_ns"] = thresholds.ptp_offset_warn_ns;
     t["ptp_offset_crit_ns"] = thresholds.ptp_offset_crit_ns;
+    t["rtc_voltage_warn_mv"] = thresholds.rtc_voltage_warn_mv;
+    t["rtc_voltage_crit_mv"] = thresholds.rtc_voltage_crit_mv;
 
     // Log excerpt settings
     auto& le = json["log_excerpt"];

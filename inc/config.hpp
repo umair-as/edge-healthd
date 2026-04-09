@@ -39,6 +39,11 @@ struct Thresholds {
     // PTP offset thresholds (nanoseconds) — reserved for future PTP probe
     uint32_t ptp_offset_warn_ns = 10000;
     uint32_t ptp_offset_crit_ns = 100000;
+
+    // RTC battery voltage thresholds (millivolts)
+    // CR2032/supercap nominal ~3000 mV; warn at ~10% drop, crit at ~17% drop
+    uint32_t rtc_voltage_warn_mv = 2700;
+    uint32_t rtc_voltage_crit_mv = 2500;
 };
 
 // -----------------------------------------------------------------------------
@@ -89,6 +94,8 @@ struct Config {
     // ---------------------------------------------------------------------
     bool enable_ntp = true;                             // Monitor NTP sync
     bool enable_ptp = false;                            // PTP config present; no probe implemented yet
+    bool enable_rtc = true;                             // Monitor RTC presence and battery health
+    std::filesystem::path rtc_device = "/sys/class/rtc/rtc0";
     bool enable_thermal = true;                         // Monitor temperature
     bool enable_update_tracking = true;                 // Track update status
 

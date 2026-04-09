@@ -215,12 +215,27 @@ void to_json(nlohmann::json& j, const PtpStatus& ptp) {
     }
 }
 
+void to_json(nlohmann::json& j, const RtcStatus& rtc) {
+    j = nlohmann::json{{"enabled", rtc.enabled}};
+
+    if (rtc.enabled) {
+        j["hctosys"] = rtc.hctosys;
+        if (rtc.voltage_mv) {
+            j["voltage_mv"] = *rtc.voltage_mv;
+        }
+        if (rtc.drift_sec) {
+            j["drift_sec"] = *rtc.drift_sec;
+        }
+    }
+}
+
 void to_json(nlohmann::json& j, const TimeSyncStatus& time_sync) {
     j = nlohmann::json{
         {"overall", std::string(edge::to_string(time_sync.overall))},
         {"source", std::string(edge::to_string(time_sync.source))},
         {"ntp", time_sync.ntp},
-        {"ptp", time_sync.ptp}
+        {"ptp", time_sync.ptp},
+        {"rtc", time_sync.rtc}
     };
 }
 

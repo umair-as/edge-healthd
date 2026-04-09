@@ -8,6 +8,7 @@
 #include <cctype>
 #include <chrono>
 #include <ctime>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -341,9 +342,60 @@ ProbeResult<TimeSyncStatus> TimeSyncProbe::collect() const {
         }
     }
 
+    if (config_.enable_rtc) {
+        status.rtc = collect_rtc();
+    }
+
     status.overall = evaluate_sync_severity(status);
 
     return status;
+}
+
+RtcStatus TimeSyncProbe::collect_rtc() const {
+    auto now = std::chrono::steady_clock::now();
+    if (rtc_cache_valid_ && now < rtc_cache_expires_) {
+        return rtc_cache_;
+    }
+
+    RtcStatus rtc;
+    rtc.enabled = true;
+
+    const auto base = config_.rtc_device;
+
+    // hctosys: did the kernel set the system clock from this RTC at boot?
+    // Doesn't change after boot — preserved across cache refreshes via the cache itself.
+    {
+        std::ifstream f(base / "hctosys");
+        int val = 0;
+        if (f >> val) {
+            rtc.hctosys = (val == 1);
+        }
+    }
+
+    // battery_voltage in µV → convert to mV
+    {
+        std::ifstream f(base / "battery_voltage");
+        uint64_t uv = 0;
+        if (f >> uv) {
+            rtc.voltage_mv = static_cast<uint32_t>(uv / 1000);
+        }
+    }
+
+    // drift: compare RTC epoch time against system clock
+    {
+        std::ifstream f(base / "since_epoch");
+        uint64_t rtc_epoch = 0;
+        if (f >> rtc_epoch) {
+            auto sys_epoch = static_cast<uint64_t>(
+                std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+            rtc.drift_sec = static_cast<int64_t>(sys_epoch) - static_cast<int64_t>(rtc_epoch);
+        }
+    }
+
+    rtc_cache_ = rtc;
+    rtc_cache_expires_ = now + config_.time_sync_interval;
+    rtc_cache_valid_ = true;
+    return rtc;
 }
 
 NtpStatus TimeSyncProbe::collect_ntp() const {
@@ -390,20 +442,30 @@ NtpStatus TimeSyncProbe::collect_ntp() const {
 }
 
 Severity TimeSyncProbe::evaluate_sync_severity(const TimeSyncStatus& status) const {
-    // No sync source is warning
-    if (status.source == TimeSyncSource::None) {
-        if (!config_.enable_ntp) {
-            return Severity::Ok; // Sync not configured
+    Severity sev = Severity::Ok;
+
+    // NTP sync path
+    if (config_.enable_ntp) {
+        if (status.source == TimeSyncSource::None) {
+            sev = Severity::Warn;
+        } else if (status.source == TimeSyncSource::Ntp &&
+                   status.ntp.state != TimeSyncState::Locked) {
+            sev = Severity::Warn;
         }
-        return Severity::Warn;
     }
 
-    // Locked state is OK
-    if (status.source == TimeSyncSource::Ntp && status.ntp.state == TimeSyncState::Locked) {
-        return Severity::Ok;
+    // RTC battery voltage — critical backup risk if low
+    if (config_.enable_rtc && status.rtc.voltage_mv) {
+        const auto& t = config_.thresholds;
+        if (*status.rtc.voltage_mv < t.rtc_voltage_crit_mv) {
+            sev = Severity::Crit;
+        } else if (*status.rtc.voltage_mv < t.rtc_voltage_warn_mv &&
+                   sev == Severity::Ok) {
+            sev = Severity::Warn;
+        }
     }
 
-    return Severity::Warn;
+    return sev;
 }
 
 // -----------------------------------------------------------------------------
