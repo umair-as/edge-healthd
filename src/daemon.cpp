@@ -342,9 +342,11 @@ bool is_systemd_managed() {
 
 void notify_ready(std::string_view version) {
 #ifdef EDGE_HAS_SYSTEMD
-    // STATUS persists in systemctl status output — surfacing version avoids
-    // needing journalctl to identify what's running on the target.
-    sd_notifyf(0, "READY=1\nSTATUS=v%.*s — starting", static_cast<int>(version.size()), version.data());
+    // READY=1 only — collection_cycle() already called notify_status() with the
+    // actual first-run severity. Appending STATUS here would overwrite that with
+    // "starting" and leave systemctl showing a stale string until the next cycle.
+    (void)version;
+    sd_notify(0, "READY=1");
 #else
     (void)version;
 #endif

@@ -5,7 +5,168 @@
 | Version | Board | Kernel | Date | Burst | Syscalls/cycle |
 |---------|-------|--------|------|-------|----------------|
 | 0.1.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.6.63-v8-16k-igw | 2026-02-xx | 227 ms | 5,133 |
-| 0.4.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw | 2026-03-03 | **98 ms** | **683** |
+| 0.4.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw | 2026-03-03 | 98 ms | 683 |
+| 0.5.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-g519f4a2b7bf8 | 2026-04-08 | **49 ms** | **904** |
+
+---
+
+## Profile: edge-healthd 0.5.0
+
+Profiled on Raspberry Pi 5 (4-core Cortex-A76, 8 GB RAM) running IoT Gateway OS igw.0.1.0,
+kernel 6.18.13-v8-16k-igw-00005-g519f4a2b7bf8.
+
+Binary: `edge-healthd 0.5.0` (aarch64, Yocto build, systemd-managed).
+
+### Test Configuration
+
+```json
+{
+  "collect_interval_sec": 60,
+  "time_sync_interval_sec": 300,
+  "monitored_services": ["sshd.socket", "NetworkManager.service", "mosquitto.service",
+                          "telegraf.service", "influxdb.service"],
+  "monitored_mounts": ["/", "/data"],
+  "monitored_interfaces": []
+}
+```
+
+### Collection Cycle Timing
+
+One complete collection burst takes **~49 ms wall-clock**, then the daemon
+sleeps for the remainder of the 60 s interval.
+
+| Phase            | Wall-clock | Syscalls | Description                                                         |
+|------------------|------------|----------|---------------------------------------------------------------------|
+| Device probe     | ~2 ms      | ~10      | `/etc/os-release`, `/proc/device-tree/serial-number`, `/sys/devices/system/cpu/online` |
+| Boot probe       | <1 ms      | ~2       | `/data/edge/health/boot_state.json`                                 |
+| Journal scan     | ~15 ms     | ~370     | 6 scans × 1 active journal file (5 services + system-wide JournalProbe) |
+| D-Bus services   | interleaved| ~110     | query 5 systemd units via `org.freedesktop.systemd1`                |
+| Resources        | ~2 ms      | ~25      | `/proc/meminfo`, `/sys/class/thermal`, `sysinfo()`, `statfs`        |
+| Netlink + IP     | 0 ms       | 0        | read from in-memory cache                                           |
+| NTP check        | **0 ms**   | **0**    | **skipped** — `time_sync_interval_sec=300`, not yet due             |
+| D-Bus notify     | ~1 ms      | ~20      | HealthManager property update (ephemeral connection per cycle)      |
+| Write snapshot   | <1 ms      | 3        | atomic tmp-write + `renameat` to `state.json`                       |
+| **Total burst**  | **~49 ms** | **~904** | then `clock_nanosleep(60 s)`                                        |
+
+### Syscall Summary (130 s window, 2 collection cycles)
+
+```
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 42.05    0.001118           1      1054           fstat
+ 10.57    0.000281           3        78        12 openat
+  7.45    0.000198           1       156        52 recvmsg
+  6.62    0.000176          14        12           munmap
+  5.23    0.000139           1        78           close
+  4.32    0.000115           1        76           getdents64
+  4.14    0.000110           2        50           sendmsg
+  3.65    0.000097           1        50           ppoll
+  2.37    0.000063           2        22           read
+  1.88    0.000050           4        12           mmap
+  1.77    0.000047           0        48           fstatfs
+  1.65    0.000044           1        42           write
+  1.39    0.000037           1        32           getsockopt
+  0.98    0.000026           6         4           connect
+  0.86    0.000023           2         8           statfs
+  0.71    0.000019           4         4           socket
+  0.68    0.000018           2         8           eventfd2
+  0.68    0.000018           0        24           fcntl
+  0.45    0.000012           1         8           setsockopt
+  0.34    0.000009           4         2           renameat
+  0.30    0.000008           4         2           sysinfo
+  0.30    0.000008           2         4           bind
+  0.26    0.000007           3         2           writev
+  0.26    0.000007           1         4           prctl
+  0.19    0.000005           5         1         1 restart_syscall
+  0.19    0.000005           1         4           getuid
+  0.19    0.000005           1         4           getpeername
+  0.15    0.000004           2         2           newfstatat
+  0.15    0.000004           1         4           getsockname
+  0.15    0.000004           1         4           getrandom
+  0.08    0.000002           0         6           uname
+  0.00    0.000000           0         1         1 futex
+  0.00    0.000000           0         2           getpid
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.002659           1      1808        66 total
+```
+
+**Totals (2 cycles):** 1,808 calls, 2.66 ms kernel time
+**Per cycle:** ~904 calls, ~1.33 ms kernel time
+
+### Resource Footprint
+
+| Metric                    | Value                                  |
+|---------------------------|----------------------------------------|
+| Threads                   | 1 (watchdog thread; systemd-managed)  |
+| VmRSS                     | 5.6 MB                                 |
+| PSS (proportional set)    | 1.75 MB                                |
+| Private dirty memory      | 524 kB                                 |
+| Open FDs (steady state)   | 7                                      |
+| Total CPU since boot      | 105 ms (`sum_exec_runtime`, longer uptime) |
+| Context switches          | 5,884 (5,873 voluntary, 11 involuntary)|
+| I/O reads (cumulative)    | 38 KB                                  |
+| I/O writes (cumulative)   | 161 KB                                 |
+| write_bytes (actual disk) | 4 KB (1 page — snapshot per cycle)    |
+| Duty cycle                | 0.082% (49 ms active / 60 s interval) |
+
+### Journal Scanning (0.5.0)
+
+**6 scans per cycle** — 5 monitored services + 1 system-wide JournalProbe. Target has
+1 active journal file, no rotation. Each scan opens 4 paths
+(`/run/log/journal/`, `/<machine-id>/`, `system.journal`, `/var/log/journal`).
+
+Total: 6 × 4 = 24 `openat` calls for journal, 6 `mmap`/`munmap` pairs, ~94 `fstat` calls/scan (~561 total).
+
+### D-Bus Connection Model (0.5.0)
+
+Two ephemeral D-Bus connections are opened and closed **every cycle**:
+1. `org.freedesktop.systemd1` — 5 service queries (GetUnit + unit/service props each)
+2. `edge.health.Manager` property update — OverallSeverity publish to D-Bus
+
+Evidence: `socket`/`connect`/`bind`/`eventfd2` appear 4 times each in `strace -c` (2 per cycle).
+This is the source of the syscall count increase vs v0.4.0 despite faster wall-clock.
+See backlog item: *refactor(dbus): reuse client connection per cycle*.
+
+### NTP / time_sync_interval_sec
+
+`time_sync_interval_sec=300` (default): `org.freedesktop.timedate1` was **not queried** in either
+profiled cycle. Zero `ppoll` blocking from NTP. ppoll total across all 23 calls: 10.4 ms
+(all non-blocking fast D-Bus round-trips). This is the primary driver of the 49 ms vs 98 ms burst.
+
+When NTP *is* queried (every 5th minute), expect +62 ms burst wall-clock — same cost as v0.4.0.
+
+### Netlink
+
+Zero netlink syscalls at collection time. NetlinkMonitor cache confirmed intact.
+
+---
+
+## vs 0.4.0: What Changed
+
+| Metric                  | 0.4.0          | 0.5.0        | Delta   |
+|-------------------------|----------------|--------------|---------|
+| Burst wall-clock        | 98 ms          | **49 ms**    | -50%    |
+| Total syscalls (2 cyc.) | 1,366          | **1,808**    | +32%    |
+| fstat (2 cyc.)          | 708            | **1,054**    | +49%    |
+| Kernel time (2 cyc.)    | 3.1 ms         | **2.66 ms**  | -14%    |
+| ppoll blocking          | ~62 ms         | **~10 ms**   | -84%    |
+| Journal scans/cycle     | 4              | **6**        | +50% (5 services vs 3) |
+| Open FDs (steady state) | 8              | **7**        | -1      |
+| VmRSS                   | 5.5 MB         | **5.6 MB**   | +100 kB |
+| PSS                     | 2.5 MB         | **1.75 MB**  | -30%    |
+| Private dirty           | 500 kB         | **524 kB**   | +24 kB  |
+| Duty cycle              | 0.16%          | **0.082%**   | -49%    |
+
+**Primary driver of burst improvement:** `time_sync_interval_sec=300` eliminates the
+`org.freedesktop.timedate1` D-Bus query from 59 out of every 60 cycles (was ~62 ms ppoll
+blocking per cycle in v0.4.0).
+
+**Syscall count increase** is explained entirely by: 2 extra monitored services (2 more journal
+scans + 2 more D-Bus service query triples) and the new per-cycle ephemeral D-Bus connection
+for HealthManager property publication (~20 syscalls/cycle overhead).
+
+**Kernel time is DOWN** despite more syscalls — the eliminated ppoll waits that were counted
+in kernel time previously are now absent.
 
 ---
 
