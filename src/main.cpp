@@ -52,7 +52,7 @@ void print_usage([[maybe_unused]] std::string_view program) {
 
 void print_version() {
     auto c = help_colors();
-    std::cout << c.bold << "edge-healthd" << c.reset << " " << c.dim << EDGE_HEALTHD_VERSION << c.reset << "\n";
+    std::cout << c.bold << "edge-healthd" << c.reset << " " << c.dim << EDGE_HEALTHD_VERSION_DETAILED << c.reset << "\n";
 }
 
 struct Args {

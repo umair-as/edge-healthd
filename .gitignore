@@ -39,3 +39,6 @@ _CPack_Packages/
 .DS_Store
 Thumbs.db
 web/server/server
+
+# Benchmark raw results (on-target data, not committed)
+benchmark/
