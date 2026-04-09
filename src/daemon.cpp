@@ -118,6 +118,38 @@ std::optional<std::string> SnapshotDaemon::initialize() {
         health_manager_.reset();
     }
 
+    // Subscribe to RAUC Completed signal so UpdateProbe runs immediately after
+    // an OTA install instead of waiting up to update_check_interval seconds.
+    // Independent try/catch — RAUC may not be installed on this device.
+    if (config_.enable_update_tracking) {
+        try {
+            rauc_signal_proxy_ = sdbus::createProxy(
+                sdbus::ServiceName{"de.pengutronix.rauc"},
+                sdbus::ObjectPath{"/"}
+            );
+
+            rauc_signal_proxy_
+                ->uponSignal(sdbus::SignalName{"Completed"})
+                .onInterface(sdbus::InterfaceName{"de.pengutronix.rauc.Installer"})
+                .call([this](int32_t result) {
+                    log::info("RAUC Completed signal received (result=" +
+                              std::to_string(result) + "); scheduling immediate update check");
+                    rauc_update_pending_.store(true, std::memory_order_relaxed);
+                    {
+                        std::lock_guard lock(cv_mutex_);
+                        trigger_requested_.store(true);
+                    }
+                    cv_.notify_one();
+                });
+
+            log::info("Subscribed to RAUC de.pengutronix.rauc.Installer.Completed signal");
+        } catch (const sdbus::Error& e) {
+            log::warn("RAUC signal subscription failed (RAUC not installed?): " +
+                      std::string(e.getMessage()));
+            rauc_signal_proxy_.reset();
+        }
+    }
+
     return std::nullopt;
 }
 
@@ -227,6 +259,13 @@ void SnapshotDaemon::collection_cycle() {
     maybe_collect(*services_probe_,  services_schedule_,  last_known_good_.services,  "services");
     maybe_collect(*resources_probe_, resources_schedule_, last_known_good_.resources, "resources");
     maybe_collect(*time_sync_probe_, time_sync_schedule_, last_known_good_.time_sync, "time_sync");
+
+    // If RAUC fired a Completed signal since the last cycle, make UpdateProbe due
+    // immediately regardless of its regular schedule. Clear the flag before collect
+    // so a second signal that arrives during collect is not lost.
+    if (rauc_update_pending_.exchange(false, std::memory_order_relaxed)) {
+        update_schedule_.next_run = now;
+    }
     maybe_collect(*update_probe_,    update_schedule_,    last_known_good_.update,    "update");
     maybe_collect(*journal_probe_,   journal_schedule_,   last_known_good_.journal,   "journal");
 
