@@ -84,6 +84,10 @@ Config Config::load(const std::filesystem::path& path) {
         config.update_check_interval = std::chrono::seconds(
             json["update_check_interval_sec"].get<int>());
     }
+    if (json.contains("trigger_min_interval_sec")) {
+        config.trigger_min_interval = std::chrono::seconds(
+            json["trigger_min_interval_sec"].get<int>());
+    }
 
     // Monitored items
     if (json.contains("monitored_services")) {
@@ -235,6 +239,10 @@ std::optional<std::string> Config::validate() const {
         return "update_check_interval_sec must be at least 1";
     }
 
+    if (trigger_min_interval.count() < 0) {
+        return "trigger_min_interval_sec must be >= 0 (0 disables rate-limiting)";
+    }
+
     if (!is_valid_log_level(log_level)) {
         return "log_level must be one of: debug, info, warn, error";
     }
@@ -286,6 +294,7 @@ std::string Config::to_json_string(int indent) const {
     json["sample_window_sec"] = sample_window_sec;
     json["time_sync_interval_sec"] = time_sync_interval.count();
     json["update_check_interval_sec"] = update_check_interval.count();
+    json["trigger_min_interval_sec"] = trigger_min_interval.count();
 
     // Runtime options (file-visible)
     json["log_level"] = log_level;

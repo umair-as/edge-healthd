@@ -4,6 +4,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include "config.hpp"
 
+#include <filesystem>
+#include <fstream>
+
 using namespace edge;
 
 TEST_CASE("Config defaults are valid", "[config]") {
@@ -157,4 +160,39 @@ TEST_CASE("Config RTC device path is configurable", "[config][rtc]") {
 
     CHECK(config.rtc_device == "/sys/class/rtc/rtc1");
     CHECK(config.to_json_string().find("rtc1") != std::string::npos);
+}
+
+TEST_CASE("Config trigger_min_interval defaults to 5s", "[config][trigger]") {
+    auto config = Config::defaults();
+    CHECK(config.trigger_min_interval.count() == 5);
+}
+
+TEST_CASE("Config trigger_min_interval_sec is parsed from JSON", "[config][trigger]") {
+    namespace fs = std::filesystem;
+    auto tmp = fs::temp_directory_path() / "trigger_interval_test.conf";
+    std::ofstream f(tmp);
+    f << R"({"trigger_min_interval_sec": 10})";
+    f.close();
+
+    auto config = Config::load(tmp);
+    CHECK(config.trigger_min_interval.count() == 10);
+    fs::remove(tmp);
+}
+
+TEST_CASE("Config trigger_min_interval_sec=0 disables rate-limit", "[config][trigger]") {
+    namespace fs = std::filesystem;
+    auto tmp = fs::temp_directory_path() / "trigger_zero_test.conf";
+    std::ofstream f(tmp);
+    f << R"({"trigger_min_interval_sec": 0})";
+    f.close();
+
+    auto config = Config::load(tmp);
+    CHECK(config.trigger_min_interval.count() == 0);
+    CHECK(!config.validate().has_value());  // 0 is valid (disables rate-limit)
+    fs::remove(tmp);
+}
+
+TEST_CASE("Config to_json_string includes trigger_min_interval_sec", "[config][trigger]") {
+    auto config = Config::defaults();
+    CHECK(config.to_json_string().find("\"trigger_min_interval_sec\"") != std::string::npos);
 }

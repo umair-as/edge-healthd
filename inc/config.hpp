@@ -71,6 +71,7 @@ struct Config {
     uint32_t sample_window_sec = 60;                    // Resource averaging window
     std::chrono::seconds time_sync_interval{300};       // How often to query timedate1 (decoupled from collect_interval)
     std::chrono::seconds update_check_interval{1800};   // How often to query RAUC D-Bus (updates are rare events)
+    std::chrono::seconds trigger_min_interval{5};       // Minimum gap between TriggerSnapshot calls (rate-limit)
 
     // ---------------------------------------------------------------------
     // Monitored items (empty = auto-detect or skip)

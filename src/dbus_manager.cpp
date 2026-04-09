@@ -35,7 +35,7 @@ bool is_degradation(Severity prev_sev, Severity new_sev) {
 // -----------------------------------------------------------------------------
 
 HealthManager::HealthManager(sdbus::IConnection& connection,
-                             std::function<void()> on_trigger)
+                             std::function<bool()> on_trigger)
     : AdaptorInterfaces(connection, kObjectPath)
     , on_trigger_(std::move(on_trigger))
 {
@@ -102,9 +102,9 @@ std::string HealthManager::OverallSeverity()
 bool HealthManager::TriggerSnapshot()
 {
     if (on_trigger_) {
-        on_trigger_();
+        return on_trigger_();
     }
-    return true;
+    return false;
 }
 
 std::vector<std::string> HealthManager::GetRecentLogs(uint32_t max_lines)

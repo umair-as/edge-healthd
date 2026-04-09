@@ -134,8 +134,11 @@ private:
 
     // Condition variable used to interrupt the collection sleep on demand
     // (TriggerSnapshot D-Bus call or shutdown).
+    // cv_mutex_ also guards last_trigger_time_ for the rate-limit check.
     std::mutex              cv_mutex_;
     std::condition_variable cv_;
+    std::chrono::steady_clock::time_point last_trigger_time_{
+        std::chrono::steady_clock::time_point::min()};
 
     // Internal methods
     void collection_cycle();
