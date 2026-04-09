@@ -25,6 +25,24 @@
 namespace edge {
 
 // -----------------------------------------------------------------------------
+// ProbeSchedule
+//
+// Controls when a probe's collect() is called.
+//
+//   interval == 0s  →  collect exactly once at startup, never again
+//   interval  > 0s  →  collect every `interval` seconds
+//
+// On success: next_run advances by interval; has_result = true.
+// On failure: next_run is not updated so the probe is retried next cycle.
+// -----------------------------------------------------------------------------
+
+struct ProbeSchedule {
+    std::chrono::seconds interval{0};               // 0 = collect-once sentinel
+    std::chrono::steady_clock::time_point next_run{};
+    bool has_result = false;
+};
+
+// -----------------------------------------------------------------------------
 // SnapshotDaemon
 //
 // The main service class that:
@@ -87,6 +105,19 @@ private:
     // Declared before health_manager_ so connection outlives the adaptor.
     std::unique_ptr<sdbus::IConnection> dbus_connection_;
     std::unique_ptr<HealthManager>      health_manager_;
+
+    // Per-probe collection schedules — set in initialize(), used in collection_cycle()
+    ProbeSchedule device_schedule_;
+    ProbeSchedule boot_schedule_;
+    ProbeSchedule services_schedule_;
+    ProbeSchedule resources_schedule_;
+    ProbeSchedule time_sync_schedule_;
+    ProbeSchedule update_schedule_;
+    ProbeSchedule journal_schedule_;
+
+    // Last known good results — retained across cycles when a probe is not due
+    // or when a probe fails. Aggregated into every snapshot.
+    SnapshotState last_known_good_;
 
     // State
     std::atomic<bool> running_{false};

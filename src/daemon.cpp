@@ -83,6 +83,16 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     update_probe_ = std::make_unique<UpdateProbe>(config_);
     journal_probe_ = std::make_unique<JournalProbe>(config_);
 
+    // Set up per-probe collection schedules.
+    // interval=0 means collect-once at startup (data is runtime-immutable).
+    device_schedule_    = { std::chrono::seconds{0} };
+    boot_schedule_      = { config_.collect_interval };
+    services_schedule_  = { config_.collect_interval };
+    resources_schedule_ = { config_.collect_interval };
+    time_sync_schedule_ = { config_.time_sync_interval };
+    update_schedule_    = { config_.update_check_interval };
+    journal_schedule_   = { config_.collect_interval };
+
     // Initialize aggregator and writer
     aggregator_ = std::make_unique<SnapshotAggregator>(config_);
     writer_ = std::make_unique<SnapshotWriter>(config_.snapshot_file);
@@ -184,52 +194,51 @@ SnapshotState SnapshotDaemon::current_state() const {
 void SnapshotDaemon::collection_cycle() {
     update_watchdog_heartbeat();
 
-    // Drain pending netlink events to refresh the cache before collection
+    auto now = std::chrono::steady_clock::now();
+
+    // Drain pending netlink events before resource collection
     if (nl_monitor_) {
         nl_monitor_->drain_events();
     }
 
-    // Collect from all probes
-    auto device_result = device_probe_->collect();
-    auto boot_result = boot_probe_->collect();
-    auto services_result = services_probe_->collect();
-    auto resources_result = resources_probe_->collect();
-    auto time_sync_result = time_sync_probe_->collect();
-    auto update_result = update_probe_->collect();
-    auto journal_result = journal_probe_->collect();
+    // Collect probe if due; on success update last_known_good_ and advance schedule.
+    // On failure retain last known good value — transient errors don't blank the snapshot.
+    // interval=0 probes (DeviceProbe) collect exactly once: is_due() returns false once
+    // has_result=true, regardless of next_run.
+    auto maybe_collect = [&]<typename P, typename T>(
+        P& probe, ProbeSchedule& sched, T& cache, std::string_view name) {
+        const bool due = !sched.has_result ||
+                         (sched.interval.count() > 0 && now >= sched.next_run);
+        if (!due) return;
 
-    // Log any collection errors
-    if (!device_result) {
-        log::probe_error("device", device_result.error().message);
-    }
-    if (!boot_result) {
-        log::probe_error("boot", boot_result.error().message);
-    }
-    if (!services_result) {
-        log::probe_error("services", services_result.error().message);
-    }
-    if (!resources_result) {
-        log::probe_error("resources", resources_result.error().message);
-    }
-    if (!time_sync_result) {
-        log::probe_error("time_sync", time_sync_result.error().message);
-    }
-    if (!update_result) {
-        log::probe_error("update", update_result.error().message);
-    }
-    if (!journal_result) {
-        log::probe_error("journal", journal_result.error().message);
-    }
+        auto result = probe.collect();
+        if (result) {
+            cache = std::move(*result);
+            sched.next_run = now + sched.interval;
+            sched.has_result = true;
+        } else {
+            log::probe_error(std::string(name), result.error().message);
+            // has_result stays false on first-run failure → retried next cycle
+        }
+    };
 
-    // Aggregate (use partial aggregation to handle failures)
-    auto state = aggregator_->aggregate_partial(
-        device_result ? std::optional(*device_result) : std::nullopt,
-        boot_result ? std::optional(*boot_result) : std::nullopt,
-        services_result ? std::optional(*services_result) : std::nullopt,
-        resources_result ? std::optional(*resources_result) : std::nullopt,
-        time_sync_result ? std::optional(*time_sync_result) : std::nullopt,
-        update_result ? std::optional(*update_result) : std::nullopt,
-        journal_result ? std::optional(*journal_result) : std::nullopt
+    maybe_collect(*device_probe_,    device_schedule_,    last_known_good_.device,    "device");
+    maybe_collect(*boot_probe_,      boot_schedule_,      last_known_good_.boot,      "boot");
+    maybe_collect(*services_probe_,  services_schedule_,  last_known_good_.services,  "services");
+    maybe_collect(*resources_probe_, resources_schedule_, last_known_good_.resources, "resources");
+    maybe_collect(*time_sync_probe_, time_sync_schedule_, last_known_good_.time_sync, "time_sync");
+    maybe_collect(*update_probe_,    update_schedule_,    last_known_good_.update,    "update");
+    maybe_collect(*journal_probe_,   journal_schedule_,   last_known_good_.journal,   "journal");
+
+    // Aggregate using last known good values for all probes
+    auto state = aggregator_->aggregate(
+        last_known_good_.device,
+        last_known_good_.boot,
+        last_known_good_.services,
+        last_known_good_.resources,
+        last_known_good_.time_sync,
+        last_known_good_.update,
+        last_known_good_.journal
     );
 
     // Write to file
