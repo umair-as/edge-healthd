@@ -6,7 +6,173 @@
 |---------|-------|--------|------|-------|----------------|
 | 0.1.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.6.63-v8-16k-igw | 2026-02-xx | 227 ms | 5,133 |
 | 0.4.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw | 2026-03-03 | 98 ms | 683 |
-| 0.5.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-g519f4a2b7bf8 | 2026-04-08 | **49 ms** | **904** |
+| 0.5.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-g519f4a2b7bf8 | 2026-04-08 | 49 ms | 904 |
+| 0.5.1   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-gba42df28bfdb | 2026-04-09 | **12 ms** | **169** |
+
+---
+
+## Profile: edge-healthd 0.5.1
+
+Profiled on Raspberry Pi 5 (4-core Cortex-A76, 8 GB RAM) running IoT Gateway OS igw.0.1.1,
+kernel 6.18.13-v8-16k-igw-00005-gba42df28bfdb.
+
+Binary: `edge-healthd 0.5.1` tag (aarch64, Yocto build, systemd-managed).
+Raw results: `benchmark/20260409T105636Z/` (gitignored).
+
+### Test Configuration
+
+```json
+{
+  "collect_interval_sec": 60,
+  "time_sync_interval_sec": 300,
+  "update_check_interval_sec": 1800,
+  "monitored_services": ["sshd.socket", "NetworkManager.service", "mosquitto.service",
+                          "telegraf.service", "influxdb.service"],
+  "monitored_mounts": ["/", "/data"],
+  "monitored_interfaces": []
+}
+```
+
+### Collection Cycle Timing
+
+Normal cycle (no TimeSyncProbe, no UpdateProbe, DeviceProbe already ran): **~12 ms wall-clock**.
+NTP cycle (every 5th minute, when `time_sync_interval_sec=300` fires): **~78 ms wall-clock**.
+
+| Phase            | Wall-clock | Syscalls | Description                                                          |
+|------------------|------------|----------|----------------------------------------------------------------------|
+| Boot probe       | <1 ms      | ~5       | `boot_state.json` read                                               |
+| D-Bus connect    | ~1 ms      | ~18      | socket + auth handshake to `org.freedesktop.systemd1`                |
+| D-Bus services   | ~5 ms      | ~60      | 5 units × (GetUnit + 2 property calls), 5 ppoll waits                |
+| Journal scans    | ~3 ms      | ~60      | 6 scans (5 services + JournalProbe); `/var/log/journal` (non-root; fresh persistent journal, minimal fstats) |
+| Resources        | ~1 ms      | ~15      | `/proc/meminfo`, `sysinfo()`, `statfs × 2`, `/sys/class/thermal`    |
+| Netlink + IP     | 0 ms       | 0        | in-memory cache                                                      |
+| TimeSyncProbe    | **0 ms**   | **0**    | **skipped** — 300s cadence, not yet due                              |
+| UpdateProbe      | **0 ms**   | **0**    | **skipped** — 1800s cadence                                          |
+| DeviceProbe      | **0 ms**   | **0**    | **skipped** — once-only, already collected at startup                |
+| Write snapshot   | <1 ms      | 3        | atomic tmp-write + `renameat` to `state.json`                        |
+| sd_notify STATUS | <1 ms      | 1        | `sendmsg` to `/run/systemd/notify`                                   |
+| **Total burst**  | **~12 ms** | **~169** | then `futex(WAIT)` until next cycle                                  |
+
+### Syscall Summary (130 s window, 2 collection cycles)
+
+```
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 26.73    0.000517          13        38        12 openat
+  9.31    0.000180           2        64        22 recvmsg
+  7.39    0.000143           4        34           close
+  7.19    0.000139           6        22           sendmsg
+  6.00    0.000116          38         3         1 futex
+  5.89    0.000114           4        28           getdents64
+  4.91    0.000095           4        20           ppoll
+  4.08    0.000079           5        14           read
+  3.67    0.000071          35         2           renameat
+  3.26    0.000063           3        16           write
+  3.00    0.000058           2        20           getsockopt
+  2.90    0.000056          14         4           socket
+  2.43    0.000047           2        16           fstat
+  1.91    0.000037          37         1         1 restart_syscall
+  1.86    0.000036           3        12           fstatfs
+  1.65    0.000032           4         8           statfs
+  1.60    0.000031          15         2           connect
+  1.03    0.000020           3         6           setsockopt
+  0.98    0.000019           4         4           eventfd2
+  0.78    0.000015           7         2           newfstatat
+  0.47    0.000009           4         2           sysinfo
+  0.47    0.000009           4         2           bind
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.001934           5       338        36 total
+```
+
+**Totals (2 cycles):** 338 calls, 1.93 ms kernel time
+**Per cycle:** ~169 calls, ~0.97 ms kernel time
+
+### Resource Footprint
+
+| Metric                    | Value                                  |
+|---------------------------|----------------------------------------|
+| Threads                   | 3 (main, watchdog, D-Bus event loop)  |
+| VmRSS                     | 5.5 MB                                 |
+| PSS (proportional set)    | 2.5 MB                                 |
+| Private dirty memory      | 436 kB                                 |
+| Open FDs (steady state)   | 10                                     |
+| Total CPU since boot      | 93 ms (`sum_exec_runtime`, ~12 min uptime) |
+| Context switches          | 1,745 (1,711 voluntary, 34 involuntary)|
+| I/O reads (cumulative)    | 1.3 MB (boot + journal scans)          |
+| I/O writes (cumulative)   | 8 KB (2 snapshot writes)               |
+| Duty cycle (normal)       | **0.020%** (12 ms active / 60 s interval) |
+| Duty cycle (NTP cycle)    | **0.130%** (78 ms active / 60 s interval) |
+
+### D-Bus Connection Model (0.5.1)
+
+One ephemeral D-Bus connection is opened and closed **every cycle**:
+1. `org.freedesktop.systemd1` — 5 service queries (GetUnit + unit properties per service)
+
+The `edge.health.Manager` OverallSeverity update goes through the daemon's **long-lived
+service connection** (the connection that holds the `edge.health` bus name). No new connection
+is opened for property publication — this eliminates the per-cycle ephemeral second connection
+that was present in v0.5.0.
+
+Evidence: `socket`/`connect` appear 2/1 times per cycle (vs 4/2 in v0.5.0).
+
+Remaining backlog item: *refactor(dbus): reuse systemd1 client connection per cycle* would
+eliminate the last ephemeral connection.
+
+### ProbeSchedule (0.5.1)
+
+Probe scheduling moved into daemon (PR #26). Cadences:
+
+| Probe          | Cadence          | Notes                                      |
+|----------------|------------------|--------------------------------------------|
+| DeviceProbe    | **once at start** | OS version, board ID — does not change    |
+| BootProbe      | every 60 s       | consecutive failures counter               |
+| ServicesProbe  | every 60 s       | systemd unit state + journal excerpts      |
+| ResourcesProbe | every 60 s       | CPU, memory, disk, thermals, network       |
+| TimeSyncProbe  | every 300 s      | NTP state, RTC voltage/drift (timedate1 + sysfs) |
+| UpdateProbe    | every 1800 s     | RAUC OTA slot and last update result       |
+
+In typical cycles only BootProbe + ServicesProbe + ResourcesProbe run — the ~12 ms burst.
+Every ~5 min the TimeSyncProbe adds the NTP/RTC D-Bus query (~62 ms ppoll wait → ~78 ms burst).
+
+### Journal Scanning (0.5.1)
+
+**6 scans per cycle** — 5 monitored services + 1 system-wide JournalProbe. Running as
+non-root (UID 986), the daemon gets EACCES on `/run/log/journal/<machine-id>/` and falls
+back to `/var/log/journal/`. On this freshly-imaged target (post-RAUC install), the
+persistent journal has minimal rotated files — resulting in only ~16 fstat calls across
+2 cycles (vs 1,054 in v0.5.0 which had accumulated rotated files).
+
+The sd_journal overhead still scales linearly with rotated file count; this will grow
+as the device accumulates uptime. On a long-running device with many rotated files,
+expect this to approach the v0.5.0 profile.
+
+---
+
+## vs 0.5.0: What Changed
+
+| Metric                  | 0.5.0          | 0.5.1        | Delta   |
+|-------------------------|----------------|--------------|---------|
+| Burst wall-clock        | 49 ms          | **12 ms**    | -76%    |
+| Total syscalls (2 cyc.) | 1,808          | **338**      | -81%    |
+| fstat (2 cyc.)          | 1,054          | **16**       | -98%    |
+| Kernel time (2 cyc.)    | 2.66 ms        | **1.93 ms**  | -28%    |
+| ppoll blocking          | ~10 ms         | **~0.07 ms** | -99%    |
+| D-Bus connections/cycle | 2              | **1**        | -50%    |
+| Open FDs (steady state) | 7              | **10**       | +3 (watchdog thread FDs) |
+| VmRSS                   | 5.6 MB         | **5.5 MB**   | -100 kB |
+| Private dirty           | 524 kB         | **436 kB**   | -88 kB  |
+| Duty cycle (normal)     | 0.082%         | **0.020%**   | -76%    |
+
+**Primary driver of burst improvement:** ProbeSchedule (PR #26) — DeviceProbe runs
+once only; TimeSyncProbe (NTP + RTC) and UpdateProbe on independent cadences. In
+a typical 60s cycle, none of the slow D-Bus probes fire.
+
+**fstat reduction** dominated by journal file count on this fresh target (1 active file,
+no rotation) rather than a code change. Expect it to normalize toward v0.5.0 levels as
+the device accumulates uptime and journals rotate.
+
+**D-Bus connection reduction:** HealthManager OverallSeverity update now goes through
+the long-lived service connection instead of a new ephemeral connection each cycle.
 
 ---
 

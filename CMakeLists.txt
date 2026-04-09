@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Derive version from git tag (v0.5.1 → 0.5.1) with fallback to VERSION file.
+# Sets GIT_DERIVED_VERSION and EDGE_HEALTHD_VERSION_DETAILED.
+include(cmake/GetGitVersion.cmake)
+
 project(edge-healthd
-    VERSION 0.5.0
+    VERSION ${GIT_DERIVED_VERSION}
     DESCRIPTION "Edge device health monitoring daemon"
     LANGUAGES CXX
 )

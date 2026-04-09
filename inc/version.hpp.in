@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // edge-healthd: Generated version header — do not edit manually.
-// To change the version, update project(VERSION ...) in CMakeLists.txt.
+// Derived from git tag at configure time; see cmake/GetGitVersion.cmake.
 #pragma once
-#define EDGE_HEALTHD_VERSION       "@PROJECT_VERSION@"
-#define EDGE_HEALTHD_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
-#define EDGE_HEALTHD_VERSION_MINOR @PROJECT_VERSION_MINOR@
-#define EDGE_HEALTHD_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define EDGE_HEALTHD_VERSION          "@PROJECT_VERSION@"
+#define EDGE_HEALTHD_VERSION_DETAILED "@EDGE_HEALTHD_VERSION_DETAILED@"
+#define EDGE_HEALTHD_VERSION_MAJOR    @PROJECT_VERSION_MAJOR@
+#define EDGE_HEALTHD_VERSION_MINOR    @PROJECT_VERSION_MINOR@
+#define EDGE_HEALTHD_VERSION_PATCH    @PROJECT_VERSION_PATCH@
