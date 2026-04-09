@@ -1,54 +1,170 @@
-{
-  "device_id": "edge-001",
-  "platform": "visionfive2",
-  "snapshot_file": "/run/health/state.json",
-  "state_dir": "/data/edge/health",
-  "collect_interval_sec": 60,
-  "time_sync_interval_sec": 300,
-  "log_level": "info",
-  "dbus_timeout_ms": 2000,
-  "sample_window_sec": 60,
+// edge-healthd configuration
+// Location: /etc/edge/healthd.conf
+//
+// All fields are optional — omit any field to use the compiled-in default.
+// This file documents every available option with its default value.
+// Lines beginning with // are comments (nlohmann/json extension, supported by this daemon).
+//
+// When updating edge-healthd, check this file for new fields and update your
+// deployed /etc/edge/healthd.conf accordingly.
+//
+// Validate effective config at runtime:
+//   edge-healthd --dump-config
+//   systemctl status edge-healthd   (shows version + live severity)
 
+{
+  // ── Identity ───────────────────────────────────────────────────────────────
+  //
+  // device_id: Stable hardware identifier used in snapshot output.
+  //   Auto-detected from /proc/device-tree/serial-number, then /etc/machine-id.
+  //   Override here only if auto-detection is wrong for your platform.
+  //"device_id": "",
+
+  // platform: Human-readable hardware platform tag. Free-form string.
+  //   Examples: "rpi5", "visionfive2", "imx93"
+  //"platform": "",
+
+  // ── Paths ──────────────────────────────────────────────────────────────────
+  //
+  // snapshot_file: Where to write the JSON health snapshot each cycle.
+  //   Use tmpfs (e.g. /run) to avoid flash wear on read-only rootfs targets.
+  //"snapshot_file": "/run/health/state.json",
+
+  // state_dir: Persistent state directory for boot failure tracking.
+  //   Must survive reboots — do not point at tmpfs.
+  //"state_dir": "/data/edge/health",
+
+  // ── Collection schedule ────────────────────────────────────────────────────
+  //
+  // collect_interval_sec: How often to run the main collection cycle (seconds).
+  //   All probes except time_sync and update run at this cadence.
+  //"collect_interval_sec": 60,
+
+  // sample_window_sec: Rolling window for CPU load averaging (seconds).
+  //   Should match collect_interval_sec in most deployments.
+  //"sample_window_sec": 60,
+
+  // time_sync_interval_sec: How often to query org.freedesktop.timedate1 (seconds).
+  //   Decoupled from collect_interval to avoid D-Bus churn — timedate1 changes rarely.
+  //"time_sync_interval_sec": 300,
+
+  // update_check_interval_sec: How often to query RAUC D-Bus for OTA status (seconds).
+  //   OTA events are rare; polling too frequently is wasteful.
+  //"update_check_interval_sec": 1800,
+
+  // ── Monitored services ─────────────────────────────────────────────────────
+  //
+  // monitored_services: systemd unit names to track state, restart count, and log excerpts.
+  //   Use exact unit names as shown by `systemctl list-units`.
+  //   Socket-activated services (e.g. sshd.socket) are detected correctly.
   "monitored_services": [
     "sshd.socket",
     "NetworkManager.service"
   ],
 
+  // ── Monitored mounts ───────────────────────────────────────────────────────
+  //
+  // monitored_mounts: Filesystem mount points to report used_pct and avail_mb.
   "monitored_mounts": [
     "/",
     "/data"
   ],
 
-  "monitored_interfaces": [
-    "eth0",
-    "eth1"
-  ],
+  // ── Monitored network interfaces ───────────────────────────────────────────
+  //
+  // monitored_interfaces: Network interfaces to report link state and statistics.
+  //   Leave empty ([]) to auto-report all non-loopback interfaces.
+  //"monitored_interfaces": [],
 
-  "enable_ntp": true,
-  "enable_ptp": false,
-  "enable_thermal": true,
-  "enable_update_tracking": true,
+  // ── Feature flags ──────────────────────────────────────────────────────────
+  //
+  // enable_ntp: Monitor NTP synchronization state via org.freedesktop.timedate1.
+  //"enable_ntp": true,
 
+  // enable_ptp: Include PTP configuration in snapshot.
+  //   Note: no active PTP probe is implemented yet — reflects config only.
+  //"enable_ptp": false,
+
+  // enable_rtc: Monitor RTC presence, hctosys flag, and battery voltage via sysfs.
+  //"enable_rtc": true,
+
+  // rtc_device: sysfs path to the RTC device.
+  //"rtc_device": "/sys/class/rtc/rtc0",
+
+  // enable_thermal: Collect temperature readings from /sys/class/thermal.
+  //"enable_thermal": true,
+
+  // enable_update_tracking: Query RAUC D-Bus for OTA slot and last update result.
+  //   Disable if RAUC is not present on this platform.
+  //"enable_update_tracking": true,
+
+  // ── Severity thresholds ────────────────────────────────────────────────────
+  //
+  // All percentage thresholds are integers (0-100).
+  // warn < crit is enforced at startup — invalid config causes exit.
   "thresholds": {
-    "cpu_load_warn": 80,
-    "cpu_load_crit": 95,
-    "mem_used_warn": 80,
-    "mem_used_crit": 95,
-    "disk_used_warn": 80,
-    "disk_used_crit": 95,
-    "temp_warn_c": 70.0,
-    "temp_crit_c": 85.0,
-    "service_restart_warn": 3,
-    "service_restart_crit": 10,
-    "boot_fail_warn": 1,
-    "boot_fail_crit": 3,
-    "ptp_offset_warn_ns": 10000,
-    "ptp_offset_crit_ns": 100000
-  }
-  ,
+    // CPU 1-minute load average as percentage of total cores
+    //"cpu_load_warn": 80,
+    //"cpu_load_crit": 95,
+
+    // Memory used percentage
+    //"mem_used_warn": 80,
+    //"mem_used_crit": 95,
+
+    // Disk used percentage (per monitored mount)
+    //"disk_used_warn": 80,
+    //"disk_used_crit": 95,
+
+    // CPU/SoC temperature (degrees Celsius)
+    //"temp_warn_c": 70.0,
+    //"temp_crit_c": 85.0,
+
+    // Service restart count since boot
+    //"service_restart_warn": 3,
+    //"service_restart_crit": 10,
+
+    // Consecutive boot failures tracked in state_dir
+    //"boot_fail_warn": 1,
+    //"boot_fail_crit": 3,
+
+    // PTP clock offset (nanoseconds) — reserved for future PTP probe
+    //"ptp_offset_warn_ns": 10000,
+    //"ptp_offset_crit_ns": 100000,
+
+    // RTC backup battery voltage (millivolts)
+    // CR2032 nominal ~3000 mV; warn at ~10% drop, crit at ~17% drop
+    //"rtc_voltage_warn_mv": 2700,
+    //"rtc_voltage_crit_mv": 2500
+  },
+
+  // ── Journal / log excerpt settings ─────────────────────────────────────────
   "log_excerpt": {
-    "max_lines": 20,
-    "min_priority": "info",
-    "window_sec": 0
-  }
+    // Maximum log lines to include per service unit in the snapshot
+    //"max_lines": 20,
+
+    // Minimum syslog priority to include. Lower number = higher severity.
+    //   Values: "emerg"(0), "alert"(1), "crit"(2), "err"(3),
+    //           "warning"(4), "notice"(5), "info"(6), "debug"(7)
+    //   Leave unset to include all priorities.
+    //"min_priority": "err",
+
+    // Rolling time window for log collection (seconds). 0 or unset = no limit.
+    //"window_sec": 3600,
+
+    // Wall-clock budget for the entire journal scan (milliseconds).
+    //   Protects the collection cycle against slow or large journals.
+    //"scan_timeout_ms": 3000
+  },
+
+  // ── D-Bus settings ─────────────────────────────────────────────────────────
+  //
+  // dbus_timeout_ms: Method call timeout for D-Bus probes (milliseconds).
+  //   Increase if D-Bus services are slow to respond on your platform.
+  //"dbus_timeout_ms": 2000,
+
+  // ── Logging ────────────────────────────────────────────────────────────────
+  //
+  // log_level: Daemon log verbosity. One of: "debug", "info", "warn", "error".
+  //   Override at runtime with: edge-healthd -v (debug) or -f (foreground).
+  //"log_level": "info"
 }
