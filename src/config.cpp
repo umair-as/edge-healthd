@@ -47,7 +47,9 @@ Config Config::load(const std::filesystem::path& path) {
         throw std::runtime_error("Cannot open config file: " + path.string());
     }
 
-    auto json = nlohmann::json::parse(file);
+    // ignore_comments=true enables // and /* */ style comments in the JSON file,
+    // matching the sshd_config / unix convention operators expect.
+    auto json = nlohmann::json::parse(file, nullptr, true, true);
     Config config = defaults();
 
     // Identity
