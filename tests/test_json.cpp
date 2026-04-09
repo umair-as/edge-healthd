@@ -129,6 +129,24 @@ TEST_CASE("JSON serialize full SnapshotState", "[json]") {
     CHECK(j.contains("summary"));
 }
 
+TEST_CASE("JSON ptp.enabled reflects config in snapshot", "[json][ptp]") {
+    TimeSyncStatus ts;
+    ts.ptp.enabled = true;
+    ts.overall = Severity::Ok;
+
+    auto j = nlohmann::json(ts);
+
+    CHECK(j["ptp"]["enabled"] == true);
+}
+
+TEST_CASE("JSON ptp.enabled false by default", "[json][ptp]") {
+    TimeSyncStatus ts;
+
+    auto j = nlohmann::json(ts);
+
+    CHECK(j["ptp"]["enabled"] == false);
+}
+
 TEST_CASE("JSON serialize_pretty produces indented output", "[json]") {
     SnapshotState state;
     state.generated_at = std::chrono::system_clock::now();
