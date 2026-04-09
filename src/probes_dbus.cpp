@@ -342,6 +342,10 @@ ProbeResult<TimeSyncStatus> TimeSyncProbe::collect() const {
         }
     }
 
+    // Reflect PTP config in snapshot even though no PTP probe exists yet.
+    // Operators can see enable_ptp=true is registered; startup warns about no probe.
+    status.ptp.enabled = config_.enable_ptp;
+
     if (config_.enable_rtc) {
         status.rtc = collect_rtc();
     }

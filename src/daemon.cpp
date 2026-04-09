@@ -56,7 +56,7 @@ std::optional<std::string> SnapshotDaemon::initialize() {
 
     // Warn about unimplemented PTP probe
     if (config_.enable_ptp) {
-        log::warn("enable_ptp=true in config but PTP probe is not yet implemented; ignoring");
+        log::warn("enable_ptp=true in config but PTP probe is not yet implemented; ptp.enabled will reflect config, offset thresholds unused");
     }
 
     // Initialize NetlinkMonitor first
