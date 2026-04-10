@@ -674,8 +674,11 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
 // UpdateProbe
 // -----------------------------------------------------------------------------
 
-UpdateProbe::UpdateProbe(const Config& config, std::filesystem::path state_dir)
+UpdateProbe::UpdateProbe(const Config& config,
+                         sdbus::IConnection* dbus,
+                         std::filesystem::path state_dir)
     : config_(config)
+    , dbus_(dbus)
     , state_dir_(std::move(state_dir)) {}
 
 ProbeResult<UpdateStatus> UpdateProbe::collect() const {
