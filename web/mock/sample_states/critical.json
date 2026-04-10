@@ -165,6 +165,11 @@
       "state": null,
       "last_sync_at": null,
       "role": null
+    },
+    "rtc": {
+      "enabled": true,
+      "hctosys": false,
+      "voltage_mv": 2310
     }
   },
   "update": {
@@ -179,7 +184,24 @@
   },
   "summary": {
     "severity": "crit",
-    "reasons": ["service:edge-ota.service:failed", "high_memory", "high_storage", "time_sync_issue", "update_failed"],
+    "reasons": [
+      "service:edge-ota.service:failed",
+      "high_memory",
+      "high_storage",
+      "time_sync_issue",
+      "update_failed"
+    ],
     "notes": "Critical: OTA service failed, disk nearly full, NTP not synced"
+  },
+  "cycle": 7,
+  "journal": {
+    "overall": "crit",
+    "error_count": 4,
+    "recent_errors": [
+      "Apr 10 08:12:01 gw kernel: mmc0: error -110 whilst initialising SD card",
+      "Apr 10 08:11:58 gw edge-healthd[512]: probe error: ServicesProbe: org.freedesktop.systemd1 timeout",
+      "Apr 10 08:09:44 gw NetworkManager[341]: device eth0: carrier lost",
+      "Apr 10 08:09:41 gw kernel: eth0: renamed from veth3a2b1c"
+    ]
   }
 }

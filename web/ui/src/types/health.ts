@@ -114,11 +114,25 @@ export interface PtpStatus {
   role?: string | null;
 }
 
+export interface RtcStatus {
+  enabled: boolean;
+  hctosys?: boolean;       // RTC was used to set system clock at boot
+  voltage_mv?: number;     // backup battery voltage in mV
+  drift_sec?: number;      // RTC vs system clock skew in seconds
+}
+
 export interface TimeSyncStatus {
   overall: Severity;
   source: TimeSyncSource;
   ntp?: NtpStatus;
   ptp?: PtpStatus;
+  rtc?: RtcStatus;
+}
+
+export interface JournalStatus {
+  overall: Severity;
+  error_count: number;
+  recent_errors: string[];
 }
 
 export interface LastUpdate {
@@ -144,11 +158,13 @@ export interface HealthState {
   schema: 'edge.health.state';
   schema_version: '1.0';
   generated_at: string;
+  cycle: number;
   device: DeviceInfo;
   boot: BootStatus;
   services: ServicesStatus;
   resources: ResourcesStatus;
   time_sync: TimeSyncStatus;
   update: UpdateStatus;
+  journal: JournalStatus;
   summary: SnapshotSummary;
 }

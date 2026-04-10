@@ -1,8 +1,11 @@
 import { signal, computed } from '@preact/signals';
 import type { HealthState, Severity } from '../types/health';
 
+export type TriggerState = 'idle' | 'pending' | 'triggered' | 'rate-limited' | 'unavailable';
+
 // Core state
 export const healthState = signal<HealthState | null>(null);
+export const triggerState = signal<TriggerState>('idle');
 export const isConnected = signal<boolean>(false);
 export const isOffline = signal<boolean>(!navigator.onLine);
 export const isDarkMode = signal<boolean>(
@@ -80,6 +83,26 @@ export function setConnected(connected: boolean) {
 
 export function setOffline(offline: boolean) {
   isOffline.value = offline;
+}
+
+export async function triggerSnapshot() {
+  if (triggerState.value === 'pending') return;
+  triggerState.value = 'pending';
+  try {
+    const res = await fetch('/api/trigger', { method: 'POST' });
+    if (res.status === 503) {
+      triggerState.value = 'unavailable';
+    } else if (res.ok) {
+      const body = await res.json();
+      triggerState.value = body.triggered ? 'triggered' : 'rate-limited';
+    } else {
+      triggerState.value = 'unavailable';
+    }
+  } catch {
+    triggerState.value = 'unavailable';
+  }
+  // Reset to idle after 3s so the button is usable again
+  setTimeout(() => { triggerState.value = 'idle'; }, 3000);
 }
 
 export function toggleDarkMode() {

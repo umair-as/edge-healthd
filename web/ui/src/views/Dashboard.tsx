@@ -10,6 +10,8 @@ import {
   memoryUsedPercent,
   servicesOkCount,
   servicesTotalCount,
+  triggerState,
+  triggerSnapshot,
 } from '../state/signals';
 
 export function Dashboard() {
@@ -25,6 +27,18 @@ export function Dashboard() {
 
   const reasons = state.summary.reasons || [];
   const topServices = state.services.units.slice(0, 5);
+  const ts = triggerState.value;
+  const triggerLabel =
+    ts === 'pending'      ? 'Requesting...' :
+    ts === 'triggered'    ? 'Triggered!' :
+    ts === 'rate-limited' ? 'Rate limited' :
+    ts === 'unavailable'  ? 'Unavailable' :
+                            'Refresh Now';
+  const triggerColor =
+    ts === 'triggered'    ? 'text-severity-ok' :
+    ts === 'rate-limited' ? 'text-severity-warn' :
+    ts === 'unavailable'  ? 'text-gray-400 dark:text-gray-600' :
+                            'text-accent hover:text-accent/80';
 
   return (
     <div class="space-y-6">
@@ -35,9 +49,18 @@ export function Dashboard() {
             <h2 class="text-lg font-semibold mb-1">System Health</h2>
             <StatusBadge severity={overallSeverity.value} size="lg" pulse />
           </div>
-          <div class="text-right">
-            <p class="text-sm text-gray-500 dark:text-gray-400">Last updated</p>
+          <div class="text-right space-y-1">
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+              Last updated · cycle #{state.cycle}
+            </p>
             <p class="text-sm">{new Date(state.generated_at).toLocaleTimeString()}</p>
+            <button
+              onClick={triggerSnapshot}
+              disabled={ts === 'pending'}
+              class={`text-xs font-medium transition-colors duration-150 ${triggerColor} disabled:cursor-not-allowed`}
+            >
+              {triggerLabel}
+            </button>
           </div>
         </div>
 
@@ -59,7 +82,7 @@ export function Dashboard() {
       </Card>
 
       {/* Quick Stats */}
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card hover>
           <Metric
             label="Uptime"
@@ -105,6 +128,19 @@ export function Dashboard() {
             icon={
               <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+              </svg>
+            }
+          />
+        </Card>
+
+        <Card hover>
+          <Metric
+            label="Journal"
+            value={state.journal.error_count}
+            subtext={state.journal.overall === 'ok' ? 'no errors' : 'errors'}
+            icon={
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             }
           />

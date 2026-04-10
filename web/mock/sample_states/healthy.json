@@ -138,6 +138,12 @@
       "state": null,
       "last_sync_at": null,
       "role": null
+    },
+    "rtc": {
+      "enabled": true,
+      "hctosys": true,
+      "voltage_mv": 2950,
+      "drift_sec": 0.3
     }
   },
   "update": {
@@ -152,7 +158,15 @@
   },
   "summary": {
     "severity": "ok",
-    "reasons": ["all_ok"],
+    "reasons": [
+      "all_ok"
+    ],
     "notes": null
+  },
+  "cycle": 42,
+  "journal": {
+    "overall": "ok",
+    "error_count": 0,
+    "recent_errors": []
   }
 }

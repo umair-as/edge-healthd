@@ -194,6 +194,12 @@ def generate_time_sync(scenario: str) -> dict:
     """Generate time sync status."""
     ntp_state = "locked" if scenario != "critical" else "free_running"
 
+    rtc_voltage_mv = (
+        2950 if scenario == "healthy"
+        else 2650 if scenario == "degraded"
+        else 2200  # critical — low battery
+    )
+
     return {
         "overall": "ok" if ntp_state == "locked" else "warn",
         "source": "ntp",
@@ -210,6 +216,12 @@ def generate_time_sync(scenario: str) -> dict:
             "state": None,
             "last_sync_at": None,
             "role": None,
+        },
+        "rtc": {
+            "enabled": True,
+            "hctosys": scenario != "critical",
+            "voltage_mv": rtc_voltage_mv,
+            "drift_sec": round(random.uniform(-2.0, 2.0), 1),
         },
     }
 
@@ -228,11 +240,37 @@ def generate_update(scenario: str) -> dict:
     }
 
 
-def generate_summary(services: dict, resources: dict, time_sync: dict) -> dict:
+def generate_journal(scenario: str) -> dict:
+    """Generate journal status."""
+    if scenario == "healthy":
+        return {"overall": "ok", "error_count": 0, "recent_errors": []}
+    elif scenario == "degraded":
+        return {
+            "overall": "warn",
+            "error_count": 1,
+            "recent_errors": [
+                "Apr 10 07:55:12 edge-gateway-01 systemd[1]: edge-mqtt.service: Watchdog timeout (limit 30s)",
+            ],
+        }
+    else:  # critical
+        return {
+            "overall": "crit",
+            "error_count": 4,
+            "recent_errors": [
+                "Apr 10 08:12:01 edge-gateway-01 kernel: mmc0: error -110 whilst initialising SD card",
+                "Apr 10 08:11:58 edge-gateway-01 edge-ota[512]: fatal: bundle verification failed",
+                "Apr 10 08:09:44 edge-gateway-01 NetworkManager[341]: device eth0: carrier lost",
+                "Apr 10 08:09:41 edge-gateway-01 kernel: eth0: renamed from veth3a2b1c",
+            ],
+        }
+
+
+def generate_summary(services: dict, resources: dict, time_sync: dict, journal: dict) -> dict:
     """Generate overall summary from components."""
     severities = [
         services["overall"],
         time_sync["overall"],
+        journal["overall"],
     ]
 
     # Check resources
@@ -260,6 +298,8 @@ def generate_summary(services: dict, resources: dict, time_sync: dict) -> dict:
             reasons.append("time_sync_issue")
         if resources["memory"]["mem_used_mb"] / resources["memory"]["mem_total_mb"] > 0.7:
             reasons.append("high_memory")
+        if journal["overall"] != "ok":
+            reasons.append("journal_errors")
 
     return {
         "severity": overall,
@@ -268,26 +308,35 @@ def generate_summary(services: dict, resources: dict, time_sync: dict) -> dict:
     }
 
 
+_cycle_counter = 0
+
+
 def generate_state(scenario: str = "healthy") -> dict:
     """Generate complete health state."""
+    global _cycle_counter
+    _cycle_counter += 1
+
     device = generate_device()
     boot = generate_boot(scenario)
     services = generate_services(scenario)
     resources = generate_resources(scenario)
     time_sync = generate_time_sync(scenario)
     update = generate_update(scenario)
-    summary = generate_summary(services, resources, time_sync)
+    journal = generate_journal(scenario)
+    summary = generate_summary(services, resources, time_sync, journal)
 
     return {
         "schema": "edge.health.state",
         "schema_version": "1.0",
         "generated_at": timestamp_now(),
+        "cycle": _cycle_counter,
         "device": device,
         "boot": boot,
         "services": services,
         "resources": resources,
         "time_sync": time_sync,
         "update": update,
+        "journal": journal,
         "summary": summary,
     }
 

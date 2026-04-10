@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/godbus/dbus/v5 v5.2.2
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/sys v0.27.0 // indirect
 )

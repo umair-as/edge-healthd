@@ -132,6 +132,48 @@ export function TimeSync() {
         </Card>
       )}
 
+      {/* RTC Status */}
+      {time_sync.rtc && (
+        <Card title="RTC (Hardware Clock)">
+          {time_sync.rtc.enabled ? (
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-600 dark:text-gray-400">Used at Boot</span>
+                <StatusBadge
+                  severity={time_sync.rtc.hctosys ? 'ok' : 'warn'}
+                  size="sm"
+                  label={time_sync.rtc.hctosys ? 'Yes' : 'No'}
+                />
+              </div>
+              {time_sync.rtc.voltage_mv !== undefined && (
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 dark:text-gray-400">Battery</span>
+                  <span class={`text-sm font-medium ${
+                    time_sync.rtc.voltage_mv < 2500
+                      ? 'text-severity-crit'
+                      : time_sync.rtc.voltage_mv < 2800
+                      ? 'text-severity-warn'
+                      : 'text-severity-ok'
+                  }`}>
+                    {(time_sync.rtc.voltage_mv / 1000).toFixed(2)} V
+                  </span>
+                </div>
+              )}
+              {time_sync.rtc.drift_sec !== undefined && (
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 dark:text-gray-400">Drift</span>
+                  <span class="text-sm">
+                    {time_sync.rtc.drift_sec > 0 ? '+' : ''}{time_sync.rtc.drift_sec.toFixed(1)} s
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p class="text-sm text-gray-500 dark:text-gray-400">No RTC detected</p>
+          )}
+        </Card>
+      )}
+
       {time_sync.source === 'none' && (
         <Card>
           <p class="text-center text-severity-warn">
