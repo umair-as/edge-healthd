@@ -104,12 +104,26 @@ std::optional<std::string> SnapshotDaemon::initialize() {
 
         health_manager_ = std::make_unique<HealthManager>(
             *dbus_connection_,
-            [this]() {
+            [this]() -> bool {
+                const auto now = std::chrono::steady_clock::now();
                 {
                     std::lock_guard lock(cv_mutex_);
+                    // Enforce minimum interval between triggered collections.
+                    // Protects against unbounded wakeup floods from local D-Bus
+                    // clients driving continuous collection cycles (flash wear +
+                    // CPU burn). Set trigger_min_interval_sec=0 to disable.
+                    if (config_.trigger_min_interval.count() > 0 &&
+                        last_trigger_time_ != std::chrono::steady_clock::time_point::min() &&
+                        now - last_trigger_time_ < config_.trigger_min_interval) {
+                        log::debug("TriggerSnapshot rate-limited (min interval: " +
+                                   std::to_string(config_.trigger_min_interval.count()) + "s)");
+                        return false;
+                    }
+                    last_trigger_time_ = now;
                     trigger_requested_.store(true);
                 }
                 cv_.notify_one();
+                return true;
             });
     } catch (const sdbus::Error& e) {
         log::warn("D-Bus service unavailable, continuing without it: " +

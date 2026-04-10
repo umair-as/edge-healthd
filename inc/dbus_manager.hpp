@@ -36,7 +36,7 @@ public:
     /// @param on_trigger  Callback invoked by TriggerSnapshot() to wake the
     ///                    daemon's collection loop (must be thread-safe).
     HealthManager(sdbus::IConnection& connection,
-                  std::function<void()> on_trigger);
+                  std::function<bool()> on_trigger);
 
     ~HealthManager();
 
@@ -63,7 +63,7 @@ private:
     std::vector<std::string> GetRecentLogs(uint32_t max_lines) override;
 
     // --- Internal state ---
-    std::function<void()>    on_trigger_;
+    std::function<bool()>    on_trigger_;
     mutable std::mutex       mutex_;
     std::string              severity_str_{"unknown"};
     Severity                 last_sev_{Severity::Unknown};

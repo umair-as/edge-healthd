@@ -52,6 +52,11 @@
   //   OTA events are rare; polling too frequently is wasteful.
   //"update_check_interval_sec": 1800,
 
+  // trigger_min_interval_sec: Minimum gap between accepted TriggerSnapshot D-Bus calls (seconds).
+  //   Prevents a local client from driving continuous collection cycles and causing
+  //   unnecessary CPU usage and flash wear. Set to 0 to disable rate-limiting.
+  //"trigger_min_interval_sec": 5,
+
   // ── Monitored services ─────────────────────────────────────────────────────
   //
   // monitored_services: systemd unit names to track state, restart count, and log excerpts.
