@@ -65,42 +65,14 @@ std::optional<std::string> SnapshotDaemon::initialize() {
         return "Failed to initialize NetlinkMonitor";
     }
 
-    // Initialize probes
-    device_probe_ = std::make_unique<DeviceProbe>(config_);
-    boot_probe_ = std::make_unique<BootProbe>(config_, config_.state_dir);
-    services_probe_ = std::make_unique<ServicesProbe>(
-        config_, config_.monitored_services);
-    
-    // FIX: Pass NetlinkMonitor instance to ResourcesProbe
-    resources_probe_ = std::make_unique<ResourcesProbe>(
-        config_, 
-        *nl_monitor_,  // Pass NetlinkMonitor instance
-        std::span<const std::string>(config_.monitored_mounts), 
-        std::span<const std::string>(config_.monitored_interfaces)
-    );
-    
-    time_sync_probe_ = std::make_unique<TimeSyncProbe>(config_);
-    update_probe_ = std::make_unique<UpdateProbe>(config_);
-    journal_probe_ = std::make_unique<JournalProbe>(config_);
-
-    // Set up per-probe collection schedules.
-    // interval=0 means collect-once at startup (data is runtime-immutable).
-    device_schedule_    = { std::chrono::seconds{0} };
-    boot_schedule_      = { config_.collect_interval };
-    services_schedule_  = { config_.collect_interval };
-    resources_schedule_ = { config_.collect_interval };
-    time_sync_schedule_ = { config_.time_sync_interval };
-    update_schedule_    = { config_.update_check_interval };
-    journal_schedule_   = { config_.collect_interval };
-
-    // Initialize aggregator and writer
-    aggregator_ = std::make_unique<SnapshotAggregator>(config_);
-    writer_ = std::make_unique<SnapshotWriter>(config_.snapshot_file);
-
-    // Initialize D-Bus service (optional — daemon runs without it if bus is unavailable)
+    // Initialize D-Bus before probes so the shared connection can be passed in.
+    // All D-Bus-capable probes (Services, TimeSync, Update) use this single
+    // connection for outbound calls. The connection also backs the health manager
+    // service and the RAUC signal subscription — one fd, one event loop thread.
     try {
         dbus_connection_ = sdbus::createSystemBusConnection(
             sdbus::ServiceName{"edge.health"});
+        dbus_connection_->setMethodCallTimeout(config_.dbus_timeout);
 
         health_manager_ = std::make_unique<HealthManager>(
             *dbus_connection_,
@@ -132,17 +104,19 @@ std::optional<std::string> SnapshotDaemon::initialize() {
         health_manager_.reset();
     }
 
-    // Subscribe to RAUC Completed signal so UpdateProbe runs immediately after
-    // an OTA install instead of waiting up to update_check_interval seconds.
-    // Independent try/catch — RAUC may not be installed on this device.
-    if (config_.enable_update_tracking) {
+    // Subscribe to RAUC Completed signal on the shared connection so UpdateProbe
+    // runs immediately after an OTA install. Independent try/catch — RAUC may not
+    // be installed. If D-Bus is unavailable the subscription is silently skipped
+    // (dbus_connection_ is null) and the 1800s poll remains the only mechanism.
+    if (config_.enable_update_tracking && dbus_connection_) {
         try {
-            rauc_signal_proxy_ = sdbus::createProxy(
+            rauc_proxy_ = sdbus::createProxy(
+                *dbus_connection_,
                 sdbus::ServiceName{"de.pengutronix.rauc"},
                 sdbus::ObjectPath{"/"}
             );
 
-            rauc_signal_proxy_
+            rauc_proxy_
                 ->uponSignal(sdbus::SignalName{"Completed"})
                 .onInterface(sdbus::InterfaceName{"de.pengutronix.rauc.Installer"})
                 .call([this](int32_t result) {
@@ -160,9 +134,40 @@ std::optional<std::string> SnapshotDaemon::initialize() {
         } catch (const sdbus::Error& e) {
             log::warn("RAUC signal subscription failed (RAUC not installed?): " +
                       std::string(e.getMessage()));
-            rauc_signal_proxy_.reset();
+            rauc_proxy_.reset();
         }
     }
+
+    // Initialize probes — D-Bus-capable probes receive the shared connection.
+    // Null is safe: each probe degrades gracefully when dbus_ is nullptr.
+    sdbus::IConnection* dbus = dbus_connection_.get();
+    device_probe_ = std::make_unique<DeviceProbe>(config_);
+    boot_probe_ = std::make_unique<BootProbe>(config_, config_.state_dir);
+    services_probe_ = std::make_unique<ServicesProbe>(
+        config_, dbus, config_.monitored_services);
+    resources_probe_ = std::make_unique<ResourcesProbe>(
+        config_,
+        *nl_monitor_,
+        std::span<const std::string>(config_.monitored_mounts),
+        std::span<const std::string>(config_.monitored_interfaces)
+    );
+    time_sync_probe_ = std::make_unique<TimeSyncProbe>(config_, dbus);
+    update_probe_ = std::make_unique<UpdateProbe>(config_, dbus);
+    journal_probe_ = std::make_unique<JournalProbe>(config_);
+
+    // Set up per-probe collection schedules.
+    // interval=0 means collect-once at startup (data is runtime-immutable).
+    device_schedule_    = { std::chrono::seconds{0} };
+    boot_schedule_      = { config_.collect_interval };
+    services_schedule_  = { config_.collect_interval };
+    resources_schedule_ = { config_.collect_interval };
+    time_sync_schedule_ = { config_.time_sync_interval };
+    update_schedule_    = { config_.update_check_interval };
+    journal_schedule_   = { config_.collect_interval };
+
+    // Initialize aggregator and writer
+    aggregator_ = std::make_unique<SnapshotAggregator>(config_);
+    writer_ = std::make_unique<SnapshotWriter>(config_.snapshot_file);
 
     return std::nullopt;
 }

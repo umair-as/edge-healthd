@@ -137,8 +137,10 @@ static std::vector<std::string> get_journal_excerpt(const std::string& unit_name
 } // namespace
 
 ServicesProbe::ServicesProbe(const Config& config,
+                                     sdbus::IConnection* dbus,
                                      std::span<const std::string> monitored_units)
     : config_(config)
+    , dbus_(dbus)
     , monitored_units_(monitored_units.begin(), monitored_units.end()) {
 
     // Use config defaults if not specified
@@ -151,17 +153,13 @@ ProbeResult<ServicesStatus> ServicesProbe::collect() const {
     ServicesStatus status;
     status.overall = Severity::Ok;
 
-    std::unique_ptr<sdbus::IConnection> connection;
-    try {
-        connection = sdbus::createSystemBusConnection();
-        connection->setMethodCallTimeout(config_.dbus_timeout);
-    } catch (const sdbus::Error&) {
+    if (!dbus_) {
         for (const auto& unit_name : monitored_units_) {
             ServiceUnit unit;
             unit.name = unit_name;
             unit.state = ServiceState::Unknown;
             unit.severity = Severity::Unknown;
-            unit.detail = "D-Bus connection failed";
+            unit.detail = "D-Bus unavailable";
             status.units.push_back(std::move(unit));
         }
         status.overall = Severity::Unknown;
@@ -169,7 +167,7 @@ ProbeResult<ServicesStatus> ServicesProbe::collect() const {
     }
 
     for (const auto& unit_name : monitored_units_) {
-        auto unit = query_unit(unit_name, *connection);
+        auto unit = query_unit(unit_name, *dbus_);
         unit.severity = evaluate_unit_severity(unit);
 
         // Update overall severity
@@ -328,8 +326,9 @@ Severity ServicesProbe::evaluate_unit_severity(const ServiceUnit& unit) const {
 // TimeSyncProbe
 // -----------------------------------------------------------------------------
 
-TimeSyncProbe::TimeSyncProbe(const Config& config)
-    : config_(config) {}
+TimeSyncProbe::TimeSyncProbe(const Config& config, sdbus::IConnection* dbus)
+    : config_(config)
+    , dbus_(dbus) {}
 
 ProbeResult<TimeSyncStatus> TimeSyncProbe::collect() const {
     TimeSyncStatus status;
@@ -395,10 +394,11 @@ RtcStatus TimeSyncProbe::collect_rtc() const {
 
 NtpStatus TimeSyncProbe::collect_ntp() const {
     NtpStatus ntp;
+    if (!dbus_) {
+        return ntp;
+    }
     try {
-        auto connection = sdbus::createSystemBusConnection();
-        connection->setMethodCallTimeout(config_.dbus_timeout);
-        auto proxy = sdbus::createProxy(*connection,
+        auto proxy = sdbus::createProxy(*dbus_,
                                         sdbus::ServiceName("org.freedesktop.timedate1"),
                                         sdbus::ObjectPath("/org/freedesktop/timedate1"));
 
@@ -463,11 +463,12 @@ bool UpdateProbe::collect_rauc_update(UpdateStatus& status) const {
     using SlotProps = std::map<std::string, sdbus::Variant>;
     using SlotEntry = sdbus::Struct<std::string, SlotProps>;
 
-    try {
-        auto connection = sdbus::createSystemBusConnection();
-        connection->setMethodCallTimeout(config_.dbus_timeout);
+    if (!dbus_) {
+        return false;
+    }
 
-        auto proxy = sdbus::createProxy(*connection,
+    try {
+        auto proxy = sdbus::createProxy(*dbus_,
                                         sdbus::ServiceName("de.pengutronix.rauc"),
                                         sdbus::ObjectPath("/"));
 

@@ -151,6 +151,7 @@ public:
 
     explicit ServicesProbe(
         const Config& config,
+        sdbus::IConnection* dbus = nullptr,
         std::span<const std::string> monitored_units = {}
     );
 
@@ -158,6 +159,7 @@ public:
 
 private:
     const Config& config_;
+    sdbus::IConnection* dbus_;
     std::vector<std::string> monitored_units_;
 
     [[nodiscard]] ServiceUnit query_unit(const std::string& unit_name,
@@ -207,12 +209,13 @@ class TimeSyncProbe {
 public:
     using DataType = TimeSyncStatus;
 
-    explicit TimeSyncProbe(const Config& config);
+    explicit TimeSyncProbe(const Config& config, sdbus::IConnection* dbus = nullptr);
 
     [[nodiscard]] ProbeResult<DataType> collect() const;
 
 private:
     const Config& config_;
+    sdbus::IConnection* dbus_;
 
     [[nodiscard]] NtpStatus collect_ntp() const;
     [[nodiscard]] RtcStatus collect_rtc() const;
@@ -231,6 +234,7 @@ public:
 
     explicit UpdateProbe(
         const Config& config,
+        sdbus::IConnection* dbus = nullptr,
         std::filesystem::path state_dir = "/data/edge/update"
     );
 
@@ -238,6 +242,7 @@ public:
 
 private:
     const Config& config_;
+    sdbus::IConnection* dbus_;
     std::filesystem::path state_dir_;
 
     [[nodiscard]] std::optional<std::string> detect_active_slot() const;

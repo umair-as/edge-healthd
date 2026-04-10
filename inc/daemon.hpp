@@ -105,9 +105,10 @@ private:
     // Declared before health_manager_ so connection outlives the adaptor.
     std::unique_ptr<sdbus::IConnection> dbus_connection_;
     std::unique_ptr<HealthManager>      health_manager_;
-    // RAUC signal subscription — proxy kept alive so the signal handler stays
-    // registered. Null when update tracking is disabled or D-Bus is unavailable.
-    std::unique_ptr<sdbus::IProxy>      rauc_signal_proxy_;
+    // RAUC signal subscription — proxy on the shared dbus_connection_, kept alive
+    // so the handler stays registered. Null when D-Bus is unavailable or
+    // update tracking is disabled.
+    std::unique_ptr<sdbus::IProxy>      rauc_proxy_;
     // Set by the RAUC Completed signal handler; cleared after UpdateProbe runs.
     // Causes collection_cycle() to force UpdateProbe due regardless of schedule.
     std::atomic<bool>                   rauc_update_pending_{false};
