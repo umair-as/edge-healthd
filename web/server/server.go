@@ -84,6 +84,7 @@ func NewServer(cfg *Config) (*Server, error) {
 func (s *Server) setupRoutes() {
 	// API endpoints
 	s.mux.HandleFunc("GET /api/health", s.handleHealthAPI)
+	s.mux.HandleFunc("POST /api/trigger", s.handleTrigger)
 
 	// WebSocket endpoint
 	s.mux.HandleFunc("GET /ws/health", s.handleWebSocket)

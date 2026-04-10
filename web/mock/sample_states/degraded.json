@@ -142,6 +142,12 @@
       "state": null,
       "last_sync_at": null,
       "role": null
+    },
+    "rtc": {
+      "enabled": true,
+      "hctosys": true,
+      "voltage_mv": 2680,
+      "drift_sec": -1.2
     }
   },
   "update": {
@@ -156,7 +162,18 @@
   },
   "summary": {
     "severity": "warn",
-    "reasons": ["service_degraded", "high_memory"],
+    "reasons": [
+      "service_degraded",
+      "high_memory"
+    ],
     "notes": "MQTT service experiencing intermittent connectivity"
+  },
+  "cycle": 18,
+  "journal": {
+    "overall": "warn",
+    "error_count": 1,
+    "recent_errors": [
+      "Apr 10 07:55:12 gw systemd[1]: edge-healthd.service: Watchdog timeout (limit 120s)"
+    ]
   }
 }
