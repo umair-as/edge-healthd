@@ -631,7 +631,7 @@ Verified via `strace -c` over 130 s: zero `sendto` calls and zero
 | Board             | Raspberry Pi 5 (BCM2712, 4x Cortex-A76 @ 2.4 GHz)   |
 | RAM               | 8 GB LPDDR4X                                          |
 | OS                | IoT Gateway OS                                        |
-| Access            | `ssh iotgw`                                           |
+| Access            | SSH                                                   |
 
 ### Benchmark storage
 

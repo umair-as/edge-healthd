@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # benchmark.sh — edge-healthd performance profiler
 #
-# Usage (from host):
-#   ssh iotgw 'bash -s' < scripts/benchmark.sh
-#   ssh iotgw 'bash -s' < scripts/benchmark.sh 2>&1 | tee benchmark-$(date +%Y%m%d).log
+# Usage (from host; set REMOTE to your gateway's ssh alias or user@host):
+#   ssh $REMOTE 'bash -s' < scripts/benchmark.sh
+#   ssh $REMOTE 'bash -s' < scripts/benchmark.sh 2>&1 | tee benchmark-$(date +%Y%m%d).log
 #
 # Results saved to: /data/edge-healthd-benchmark/<timestamp>/
 #

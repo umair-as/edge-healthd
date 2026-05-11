@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test-target.sh — edge-healthd functional test suite (v0.5.1+)
 #
-# Usage (from host):
-#   ssh iotgw 'bash -s' < scripts/test-target.sh
-#   ssh iotgw 'bash -s' < scripts/test-target.sh 2>&1 | tee test-$(date +%Y%m%d).log
+# Usage (from host; set REMOTE to your gateway's ssh alias or user@host):
+#   ssh $REMOTE 'bash -s' < scripts/test-target.sh
+#   ssh $REMOTE 'bash -s' < scripts/test-target.sh 2>&1 | tee test-$(date +%Y%m%d).log
 #
 # Sections:
 #   1.  Service health
