@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"github.com/godbus/dbus/v5"
 )
 
 // handleHealthAPI serves the current state.json
@@ -61,14 +59,13 @@ func (s *Server) handleTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := dbus.ConnectSystemBus()
+	conn, err := s.dbus.get()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte(`{"error":"D-Bus system bus unavailable"}`))
 		return
 	}
-	defer conn.Close()
 
 	obj := conn.Object("edge.health", "/edge/health/manager")
 	var triggered bool
