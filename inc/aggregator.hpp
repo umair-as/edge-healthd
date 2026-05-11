@@ -35,7 +35,8 @@ public:
         const ResourcesStatus& resources,
         const TimeSyncStatus& time_sync,
         const UpdateStatus& update,
-        const JournalStatus& journal
+        const JournalStatus& journal,
+        const CrashStatus& crash
     ) const;
 
     /// Aggregate with optional values (for partial collection scenarios)
@@ -46,7 +47,8 @@ public:
         std::optional<ResourcesStatus> resources,
         std::optional<TimeSyncStatus> time_sync,
         std::optional<UpdateStatus> update,
-        std::optional<JournalStatus> journal
+        std::optional<JournalStatus> journal,
+        std::optional<CrashStatus> crash
     ) const;
 
     // -------------------------------------------------------------------------
@@ -71,6 +73,9 @@ public:
     /// Evaluate journal status severity
     [[nodiscard]] Severity evaluate_journal(const JournalStatus& journal) const;
 
+    /// Evaluate crash status severity
+    [[nodiscard]] Severity evaluate_crash(const CrashStatus& crash) const;
+
     /// Compute overall severity from individual severities
     [[nodiscard]] Severity compute_overall(
         Severity boot,
@@ -78,7 +83,8 @@ public:
         Severity resources,
         Severity time_sync,
         Severity update,
-        Severity journal
+        Severity journal,
+        Severity crash
     ) const;
 
 private:
@@ -95,7 +101,8 @@ private:
         const ResourcesStatus& resources,
         const TimeSyncStatus& time_sync,
         const UpdateStatus& update,
-        const JournalStatus& journal
+        const JournalStatus& journal,
+        const CrashStatus& crash
     ) const;
 
     /// Evaluate CPU load against thresholds

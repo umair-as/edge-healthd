@@ -19,7 +19,8 @@ SnapshotState SnapshotAggregator::aggregate(
     const ResourcesStatus& resources,
     const TimeSyncStatus& time_sync,
     const UpdateStatus& update,
-    const JournalStatus& journal
+    const JournalStatus& journal,
+    const CrashStatus& crash
 ) const {
     SnapshotState state;
     state.generated_at = std::chrono::system_clock::now();
@@ -30,6 +31,7 @@ SnapshotState SnapshotAggregator::aggregate(
     state.time_sync = time_sync;
     state.update = update;
     state.journal = journal;
+    state.crash = crash;
 
     // Evaluate severities
     auto boot_sev = evaluate_boot(boot);
@@ -38,12 +40,13 @@ SnapshotState SnapshotAggregator::aggregate(
     auto time_sync_sev = evaluate_time_sync(time_sync);
     auto update_sev = evaluate_update(update);
     auto journal_sev = evaluate_journal(journal);
+    auto crash_sev = evaluate_crash(crash);
 
     // Compute overall
     state.summary.severity = compute_overall(
-        boot_sev, services_sev, resources_sev, time_sync_sev, update_sev, journal_sev);
+        boot_sev, services_sev, resources_sev, time_sync_sev, update_sev, journal_sev, crash_sev);
     state.summary.reasons = generate_reasons(
-        boot, services, resources, time_sync, update, journal);
+        boot, services, resources, time_sync, update, journal, crash);
 
     return state;
 }
@@ -55,7 +58,8 @@ SnapshotState SnapshotAggregator::aggregate_partial(
     std::optional<ResourcesStatus> resources,
     std::optional<TimeSyncStatus> time_sync,
     std::optional<UpdateStatus> update,
-    std::optional<JournalStatus> journal
+    std::optional<JournalStatus> journal,
+    std::optional<CrashStatus> crash
 ) const {
     return aggregate(
         device.value_or(DeviceInfo{}),
@@ -64,7 +68,8 @@ SnapshotState SnapshotAggregator::aggregate_partial(
         resources.value_or(ResourcesStatus{}),
         time_sync.value_or(TimeSyncStatus{}),
         update.value_or(UpdateStatus{}),
-        journal.value_or(JournalStatus{})
+        journal.value_or(JournalStatus{}),
+        crash.value_or(CrashStatus{})
     );
 }
 
@@ -106,15 +111,23 @@ Severity SnapshotAggregator::evaluate_journal(const JournalStatus& journal) cons
     return journal.overall;
 }
 
+Severity SnapshotAggregator::evaluate_crash(const CrashStatus& crash) const {
+    if (!crash.present) {
+        return Severity::Ok;
+    }
+    return crash.acknowledged ? Severity::Warn : Severity::Crit;
+}
+
 Severity SnapshotAggregator::compute_overall(
     Severity boot,
     Severity services,
     Severity resources,
     Severity time_sync,
     Severity update,
-    Severity journal
+    Severity journal,
+    Severity crash
 ) const {
-    return worst_of({boot, services, resources, time_sync, update, journal});
+    return worst_of({boot, services, resources, time_sync, update, journal, crash});
 }
 
 std::vector<std::string> SnapshotAggregator::generate_reasons(
@@ -123,7 +136,8 @@ std::vector<std::string> SnapshotAggregator::generate_reasons(
     const ResourcesStatus& resources,
     const TimeSyncStatus& time_sync,
     const UpdateStatus& update,
-    const JournalStatus& journal
+    const JournalStatus& journal,
+    const CrashStatus& crash
 ) const {
     std::vector<std::string> reasons;
 
@@ -180,6 +194,13 @@ std::vector<std::string> SnapshotAggregator::generate_reasons(
 
     if (journal.overall == Severity::Warn || journal.overall == Severity::Crit) {
         reasons.push_back("journal_errors");
+    }
+
+    if (crash.present && !crash.acknowledged) {
+        reasons.push_back("kernel_panic_detected");
+    }
+    if (crash.present) {
+        reasons.push_back("pstore_records_present");
     }
 
     return reasons;

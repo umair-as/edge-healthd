@@ -126,7 +126,32 @@ TEST_CASE("JSON serialize full SnapshotState", "[json]") {
     CHECK(j.contains("resources"));
     CHECK(j.contains("time_sync"));
     CHECK(j.contains("update"));
+    CHECK(j.contains("journal"));
+    CHECK(j.contains("crash"));
     CHECK(j.contains("summary"));
+}
+
+TEST_CASE("JSON serialize CrashStatus", "[json]") {
+    CrashStatus crash;
+    crash.present = true;
+    crash.source = "pstore";
+    crash.fingerprint = "deadbeef";
+    crash.artifact_count = 1;
+    crash.acknowledged = false;
+
+    CrashArtifact artifact;
+    artifact.name = "dmesg-erst-0";
+    artifact.size_bytes = 1024;
+    crash.artifacts.push_back(artifact);
+
+    auto j = nlohmann::json(crash);
+
+    CHECK(j["present"] == true);
+    CHECK(j["source"] == "pstore");
+    CHECK(j["fingerprint"] == "deadbeef");
+    CHECK(j["artifact_count"] == 1);
+    CHECK(j["acknowledged"] == false);
+    CHECK(j["artifacts"][0]["name"] == "dmesg-erst-0");
 }
 
 TEST_CASE("JSON ptp.enabled reflects config in snapshot", "[json][ptp]") {

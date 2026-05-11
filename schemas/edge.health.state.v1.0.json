@@ -270,6 +270,51 @@
       "required": ["overall", "error_count", "recent_errors"]
     },
 
+    "crash": {
+      "type": "object",
+      "properties": {
+        "present": { "type": "boolean" },
+        "source": {
+          "anyOf": [
+            { "type": "string", "enum": ["pstore"] },
+            { "type": "null" }
+          ]
+        },
+        "last_panic_at": {
+          "anyOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        },
+        "fingerprint": { "type": ["string", "null"] },
+        "artifact_count": { "type": "integer", "minimum": 0 },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "mtime": {
+                "anyOf": [
+                  { "type": "string", "format": "date-time" },
+                  { "type": "null" }
+                ]
+              }
+            },
+            "required": ["name", "size_bytes"]
+          }
+        },
+        "acknowledged": { "type": "boolean" }
+      },
+      "required": [
+        "present",
+        "artifact_count",
+        "artifacts",
+        "acknowledged"
+      ]
+    },
+
     "summary": {
       "type": "object",
       "properties": {

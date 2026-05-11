@@ -6,6 +6,9 @@
 #include "config.hpp"
 #include "netlink_monitor.hpp"
 
+#include <filesystem>
+#include <fstream>
+
 using namespace edge;
 
 TEST_CASE("Probe concept compliance", "[probes]") {
@@ -104,4 +107,52 @@ TEST_CASE("JournalProbe collects system journal", "[probes]") {
            journal.overall == Severity::Unknown));
     // error_count must be consistent with recent_errors (count >= recent_errors.size())
     CHECK(journal.error_count >= journal.recent_errors.size());
+}
+
+TEST_CASE("CrashProbe detects and deduplicates pstore artifacts", "[probes]") {
+    const auto base = std::filesystem::path("/tmp/edge-healthd-crashprobe-test");
+    const auto state_dir = base / "state";
+    const auto pstore_dir = base / "pstore";
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(state_dir, ec);
+    std::filesystem::create_directories(pstore_dir, ec);
+
+    {
+        std::ofstream file(pstore_dir / "dmesg-erst-0");
+        REQUIRE(file.good());
+        file << "Kernel panic - not syncing";
+    }
+
+    auto config = Config::defaults();
+    CrashProbe probe(config, state_dir, pstore_dir);
+
+    auto first = probe.collect();
+    REQUIRE(first.has_value());
+    CHECK(first->present == true);
+    CHECK(first->source.has_value());
+    CHECK(*first->source == "pstore");
+    CHECK(first->artifact_count == 1);
+    CHECK(first->fingerprint.has_value());
+    CHECK(first->acknowledged == false);
+
+    // Probe must not auto-write the state file — acknowledgement is an
+    // external action (D-Bus method, operator tool). Verify nothing was
+    // written by the probe itself.
+    CHECK_FALSE(std::filesystem::exists(state_dir / "crash_state.json"));
+
+    // Simulate an external acknowledgement and re-collect.
+    {
+        std::ofstream out(state_dir / "crash_state.json");
+        REQUIRE(out.good());
+        out << "{\"acknowledged_fingerprint\":\"" << *first->fingerprint << "\"}";
+    }
+
+    auto second = probe.collect();
+    REQUIRE(second.has_value());
+    CHECK(second->present == true);
+    CHECK(second->fingerprint == first->fingerprint);
+    CHECK(second->acknowledged == true);
+
+    std::filesystem::remove_all(base, ec);
 }

@@ -42,3 +42,7 @@ web/server/server
 
 # Benchmark raw results (on-target data, not committed)
 benchmark/
+
+# Codex agent artifacts (not committed)
+.codex
+AGENTS.md

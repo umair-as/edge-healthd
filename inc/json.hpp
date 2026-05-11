@@ -26,6 +26,9 @@ void to_json(nlohmann::json& j, const PtpStatus& ptp);
 void to_json(nlohmann::json& j, const TimeSyncStatus& time_sync);
 void to_json(nlohmann::json& j, const LastUpdate& update);
 void to_json(nlohmann::json& j, const UpdateStatus& update);
+void to_json(nlohmann::json& j, const JournalStatus& journal);
+void to_json(nlohmann::json& j, const CrashArtifact& artifact);
+void to_json(nlohmann::json& j, const CrashStatus& crash);
 void to_json(nlohmann::json& j, const SnapshotSummary& summary);
 void to_json(nlohmann::json& j, const SnapshotState& state);
 

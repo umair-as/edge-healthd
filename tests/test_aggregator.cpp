@@ -64,31 +64,31 @@ TEST_CASE("Aggregator computes overall severity", "[aggregator]") {
 
     SECTION("All OK means overall OK") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
+            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Ok);
     }
 
     SECTION("Any crit means overall crit") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Crit, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
+            Severity::Ok, Severity::Crit, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Crit);
     }
 
     SECTION("Warn without crit means warn") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Warn, Severity::Ok, Severity::Warn, Severity::Ok, Severity::Ok);
+            Severity::Ok, Severity::Warn, Severity::Ok, Severity::Warn, Severity::Ok, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Warn);
     }
 
     SECTION("Unknown does not override ok") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Ok);
+            Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Unknown, Severity::Ok, Severity::Ok, Severity::Ok);
         CHECK(overall == Severity::Ok);
     }
 
     SECTION("Journal crit propagates to overall") {
         auto overall = agg.compute_overall(
-            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Crit);
+            Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Ok, Severity::Crit, Severity::Ok);
         CHECK(overall == Severity::Crit);
     }
 }
@@ -142,8 +142,9 @@ TEST_CASE("Aggregator generates reasons", "[aggregator]") {
     TimeSyncStatus time_sync;
     UpdateStatus update;
     JournalStatus journal;
+    CrashStatus crash;
 
-    auto state = agg.aggregate(device, boot, services, resources, time_sync, update, journal);
+    auto state = agg.aggregate(device, boot, services, resources, time_sync, update, journal, crash);
 
     CHECK_FALSE(state.summary.reasons.empty());
     // Should include reason codes for boot failures and failed service
@@ -159,4 +160,36 @@ TEST_CASE("Aggregator generates reasons", "[aggregator]") {
     }
     CHECK(has_boot_reason);
     CHECK(has_service_reason);
+}
+
+TEST_CASE("Aggregator adds crash reasons", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    DeviceInfo device;
+    BootStatus boot;
+    ServicesStatus services;
+    ResourcesStatus resources;
+    TimeSyncStatus time_sync;
+    UpdateStatus update;
+    JournalStatus journal;
+    CrashStatus crash;
+    crash.present = true;
+    crash.acknowledged = false;
+
+    auto state = agg.aggregate(device, boot, services, resources, time_sync, update, journal, crash);
+
+    bool has_kernel_panic = false;
+    bool has_pstore_present = false;
+    for (const auto& reason : state.summary.reasons) {
+        if (reason == "kernel_panic_detected") {
+            has_kernel_panic = true;
+        }
+        if (reason == "pstore_records_present") {
+            has_pstore_present = true;
+        }
+    }
+    CHECK(has_kernel_panic);
+    CHECK(has_pstore_present);
+    CHECK(state.summary.severity == Severity::Crit);
 }

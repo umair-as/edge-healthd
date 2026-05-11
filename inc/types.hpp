@@ -265,6 +265,22 @@ struct JournalStatus {
     std::vector<std::string> recent_errors; // newest first, capped by config
 };
 
+struct CrashArtifact {
+    std::string name;
+    uint64_t size_bytes = 0;
+    std::optional<std::chrono::system_clock::time_point> mtime;
+};
+
+struct CrashStatus {
+    bool present = false;
+    std::optional<std::string> source; // "pstore"
+    std::optional<std::chrono::system_clock::time_point> last_panic_at;
+    std::optional<std::string> fingerprint;
+    uint32_t artifact_count = 0;
+    std::vector<CrashArtifact> artifacts;
+    bool acknowledged = false;
+};
+
 struct SnapshotSummary {
     Severity severity = Severity::Unknown;
     std::vector<std::string> reasons{"initial"};
@@ -292,6 +308,7 @@ struct SnapshotState {
     TimeSyncStatus time_sync;
     UpdateStatus update;
     JournalStatus journal;
+    CrashStatus crash;
     SnapshotSummary summary;
 };
 
