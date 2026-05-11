@@ -6,9 +6,36 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
+
+// isOriginAllowed returns true when the request's Origin header is either
+// empty (non-browser client) or matches r.Host / one of the configured
+// AllowedOrigins. This is the same check used for WebSocket upgrades and
+// for mutating endpoints (CSRF defense). The scheme is ignored — we only
+// compare host[:port] — because the LocalOnly middleware already restricts
+// the source IP and the threat model here is cross-site, not on-path.
+func isOriginAllowed(r *http.Request, allowed []string) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	if u.Host == r.Host {
+		return true
+	}
+	for _, a := range allowed {
+		if u.Host == a {
+			return true
+		}
+	}
+	return false
+}
 
 // LoggingMiddleware logs HTTP requests
 func LoggingMiddleware(next http.Handler) http.Handler {

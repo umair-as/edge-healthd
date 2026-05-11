@@ -101,6 +101,7 @@ Then open http://localhost:5173 in your browser.
 | `-listen` | `:8080` | HTTP listen address |
 | `-state` | `/data/edge/health/state.json` | Path to health state file |
 | `-local-only` | `true` | Restrict access to private IPs |
+| `-allowed-origins` | _empty_ | Extra Origins for WebSocket + mutating endpoints (comma-separated `host[:port]` or full URLs). Same-origin is always allowed; this is only needed for dev proxies (Vite). Leave empty in production. |
 
 ### Environment Variables
 
@@ -112,7 +113,8 @@ None required. All configuration is via command-line flags.
 |----------|--------|-------------|
 | `/` | GET | Serve SPA (index.html) |
 | `/api/health` | GET | Current health state JSON |
-| `/ws/health` | GET | WebSocket for real-time updates |
+| `/api/trigger` | POST | Wake the daemon collection cycle. Requires `X-Edge-Health: 1` header and a same-origin (or `-allowed-origins`) Origin. |
+| `/ws/health` | GET | WebSocket for real-time updates (same-origin only) |
 
 ## Security
 
@@ -127,6 +129,12 @@ By default, the server only accepts connections from private IP addresses:
 - `fd00::/8` (ULA IPv6)
 
 Disable with `-local-only=false` for development.
+
+### Cross-Origin / CSRF Protections
+
+- **WebSocket upgrades** enforce a same-origin `Origin` header. Use `-allowed-origins` to whitelist a dev-proxy Origin (e.g. `http://localhost:5173` for Vite).
+- **`POST /api/trigger`** additionally requires the custom header `X-Edge-Health: 1`. Browsers cannot set this on a cross-origin POST without a CORS preflight, and the server never advertises `Access-Control-Allow-Headers`, so the preflight fails and the request never reaches the daemon. This blocks LAN-resident CSRF where a webpage opened by an operator could otherwise call `/api/trigger`.
+- `LocalOnlyMiddleware` (source-IP allowlist) does **not** defend against this class of CSRF on its own, because the abusive request originates from the operator's browser, which has a private IP.
 
 ### Security Headers
 
