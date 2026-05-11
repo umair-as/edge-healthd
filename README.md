@@ -38,7 +38,7 @@ Eight probes feeding a single aggregator:
 - **Crash artifacts** — kernel-panic detection via `systemd-pstore`, alarm-once semantics
 - **Device identity** — stable hardware ID from `/proc/device-tree/serial-number`
 
-Plus atomic snapshot writes, a `edge.health.Manager` D-Bus interface, and an opt-in Preact + Go web dashboard. See [`docs/usage.md`](docs/usage.md) for the full surface.
+Plus atomic snapshot writes, a `edge.health.Manager` D-Bus interface, and an opt-in Preact + Go web dashboard.
 
 ## Architecture
 
@@ -95,17 +95,7 @@ sudo systemctl enable --now edge-healthd
 cat /run/health/state.json | jq .summary
 ```
 
-For native debug builds, cross-compilation, CMake options, and testing, see [`docs/development.md`](docs/development.md). For configuration, deployment, the D-Bus interface, and the snapshot field reference, see [`docs/usage.md`](docs/usage.md).
-
-## Documentation
-
-| Doc | Audience | Contents |
-|---|---|---|
-| [`docs/usage.md`](docs/usage.md) | Operators | Install, configure, deploy, run, D-Bus interface, snapshot anatomy |
-| [`docs/development.md`](docs/development.md) | Contributors | Build, cross-compile, CMake options, testing, benchmarking |
-| [`docs/edge.health.state.v1.0.md`](docs/edge.health.state.v1.0.md) | Both | Snapshot schema contract (severity model, evolution rules) |
-| [`web/README.md`](web/README.md) | Operators | Optional web UI — server flags, TLS, CSRF model |
-| [`docs/performance-profile.md`](docs/performance-profile.md) | Both | Benchmark methodology and traces |
+Full documentation lives in [`docs/`](docs/). The optional web UI is covered in [`web/README.md`](web/README.md).
 
 ## Contributing
 
@@ -115,8 +105,6 @@ Issues and pull requests are welcome.
 - One commit per feature/fix; PRs are squash-merged onto `main`
 - `ctest --test-dir build --output-on-failure` must pass; ASan + UBSan clean is a hard CI requirement
 - For larger changes, open an issue first to discuss scope
-
-See [`docs/development.md`](docs/development.md) for the local build workflow.
 
 ## License
 

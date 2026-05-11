@@ -117,9 +117,10 @@ Catch2-based. Coverage targets the data structures, JSON serialization, severity
 [`scripts/test-target.sh`](../scripts/test-target.sh) is a 15-section harness covering service health, snapshot validity, schema, cycle counter, every probe, D-Bus interface, ProbeSchedule cadence, journal, plus `stress-ng` and `fio` for severity escalation + recovery.
 
 ```bash
-# From the host, against an ssh alias 'iotgw' pointing at the gateway
-ssh iotgw 'bash -s' < scripts/test-target.sh
-ssh iotgw 'bash -s' < scripts/test-target.sh 2>&1 | tee test-$(date +%Y%m%d).log
+# From the host; set REMOTE to your gateway's ssh alias or user@host
+export REMOTE=gateway
+ssh $REMOTE 'bash -s' < scripts/test-target.sh
+ssh $REMOTE 'bash -s' < scripts/test-target.sh 2>&1 | tee test-$(date +%Y%m%d).log
 ```
 
 Exit code is 0 on all-pass / 1 on any failure.
@@ -137,7 +138,7 @@ Uses `jsonschema` (Draft 2020-12) against `schemas/edge.health.state.v1.0.json`.
 [`scripts/benchmark.sh`](../scripts/benchmark.sh) profiles a running daemon using `strace -c`, timestamped `strace -T -tt`, `perf stat`, and `/proc` snapshots. Output lands in `/data/edge-healthd-benchmark/<utc-timestamp>/` on the target.
 
 ```bash
-ssh iotgw 'bash -s' < scripts/benchmark.sh
+ssh $REMOTE 'bash -s' < scripts/benchmark.sh
 ```
 
 Reference numbers and methodology live in [`performance-profile.md`](performance-profile.md).
