@@ -49,6 +49,13 @@ public:
     /// in-memory log cache served by GetRecentLogs(). No journal I/O.
     void update_recent_logs(std::vector<std::string> logs);
 
+    /// Emit a HealthAlarm with an explicit component name (e.g. "crash").
+    /// Used by SnapshotDaemon when a probe wants to surface a distinguishable
+    /// alarm beyond the overall-severity transition path.
+    void emit_alarm(const std::string& component,
+                    const std::string& message,
+                    Severity severity);
+
 private:
     // --- Manager_adaptor pure-virtual implementations ---
 

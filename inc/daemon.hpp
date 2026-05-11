@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <thread>
 
@@ -97,6 +99,7 @@ private:
     std::unique_ptr<TimeSyncProbe> time_sync_probe_;
     std::unique_ptr<UpdateProbe> update_probe_;
     std::unique_ptr<JournalProbe> journal_probe_;
+    std::unique_ptr<CrashProbe> crash_probe_;
     std::unique_ptr<SnapshotAggregator> aggregator_;
     std::unique_ptr<SnapshotWriter> writer_;
     std::unique_ptr<NetlinkMonitor> nl_monitor_;  // Netlink monitor instance
@@ -121,6 +124,7 @@ private:
     ProbeSchedule time_sync_schedule_;
     ProbeSchedule update_schedule_;
     ProbeSchedule journal_schedule_;
+    ProbeSchedule crash_schedule_;
 
     // Last known good results — retained across cycles when a probe is not due
     // or when a probe fails. Aggregated into every snapshot.
@@ -138,6 +142,12 @@ private:
     mutable std::mutex state_mutex_;
     SnapshotState current_state_;
     Severity last_severity_{Severity::Unknown};
+
+    // Tracks the most recently alarmed crash fingerprint. When the current
+    // crash fingerprint changes (new artifact set captured), emit a
+    // distinguishable HealthAlarm with component="crash" so downstream
+    // consumers can route on it independently of overall severity.
+    std::optional<std::string> last_alarmed_crash_fp_;
 
     // Condition variable used to interrupt the collection sleep on demand
     // (TriggerSnapshot D-Bus call or shutdown).

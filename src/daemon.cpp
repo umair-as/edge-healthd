@@ -154,6 +154,7 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     time_sync_probe_ = std::make_unique<TimeSyncProbe>(config_, dbus);
     update_probe_ = std::make_unique<UpdateProbe>(config_, dbus);
     journal_probe_ = std::make_unique<JournalProbe>(config_);
+    crash_probe_ = std::make_unique<CrashProbe>(config_, config_.state_dir);
 
     // Set up per-probe collection schedules.
     // interval=0 means collect-once at startup (data is runtime-immutable).
@@ -164,6 +165,7 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     time_sync_schedule_ = { config_.time_sync_interval };
     update_schedule_    = { config_.update_check_interval };
     journal_schedule_   = { config_.collect_interval };
+    crash_schedule_     = { config_.collect_interval };
 
     // Initialize aggregator and writer
     aggregator_ = std::make_unique<SnapshotAggregator>(config_);
@@ -287,6 +289,7 @@ void SnapshotDaemon::collection_cycle() {
     }
     maybe_collect(*update_probe_,    update_schedule_,    last_known_good_.update,    "update");
     maybe_collect(*journal_probe_,   journal_schedule_,   last_known_good_.journal,   "journal");
+    maybe_collect(*crash_probe_,     crash_schedule_,     last_known_good_.crash,     "crash");
 
     // Aggregate using last known good values for all probes
     auto state = aggregator_->aggregate(
@@ -296,7 +299,8 @@ void SnapshotDaemon::collection_cycle() {
         last_known_good_.resources,
         last_known_good_.time_sync,
         last_known_good_.update,
-        last_known_good_.journal
+        last_known_good_.journal,
+        last_known_good_.crash
     );
 
     state.cycle = ++cycle_count_;
@@ -319,6 +323,23 @@ void SnapshotDaemon::collection_cycle() {
     if (health_manager_) {
         health_manager_->update_severity(new_sev, prev_sev);
         health_manager_->update_recent_logs(current_state_.journal.recent_errors);
+
+        // Distinguishable crash alarm: fire when an unacknowledged crash with a
+        // new fingerprint appears. Reset the latch when the artifact set is
+        // cleared (pstore drained externally) so a future crash re-alarms.
+        const auto& crash = current_state_.crash;
+        if (crash.present && !crash.acknowledged && crash.fingerprint) {
+            if (last_alarmed_crash_fp_ != crash.fingerprint) {
+                std::string msg = "kernel panic detected: " +
+                                  std::to_string(crash.artifact_count) +
+                                  " pstore artifact(s), fingerprint=" +
+                                  *crash.fingerprint;
+                health_manager_->emit_alarm("crash", msg, Severity::Crit);
+                last_alarmed_crash_fp_ = crash.fingerprint;
+            }
+        } else if (!crash.present) {
+            last_alarmed_crash_fp_.reset();
+        }
     }
 
     // Log snapshot with severity

@@ -10,12 +10,15 @@
 #include <nlohmann/json.hpp>
 #include <unordered_map>
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -390,6 +393,42 @@ bool is_safe_ifname(std::string_view name) {
         }
     }
     return true;
+}
+
+std::chrono::system_clock::time_point file_time_to_system_clock(
+    std::filesystem::file_time_type tp) {
+    using namespace std::chrono;
+    const auto adjusted = tp - std::filesystem::file_time_type::clock::now()
+        + system_clock::now();
+    return time_point_cast<system_clock::duration>(adjusted);
+}
+
+std::string to_hex_u64(uint64_t value) {
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0') << std::setw(16) << value;
+    return oss.str();
+}
+
+std::string compute_fingerprint(const std::vector<CrashArtifact>& artifacts) {
+    constexpr uint64_t kFnvOffset = 14695981039346656037ull;
+    constexpr uint64_t kFnvPrime = 1099511628211ull;
+    uint64_t hash = kFnvOffset;
+
+    for (const auto& artifact : artifacts) {
+        std::ostringstream line;
+        line << artifact.name << ":" << artifact.size_bytes << ":";
+        if (artifact.mtime) {
+            line << std::chrono::duration_cast<std::chrono::seconds>(
+                artifact.mtime->time_since_epoch()).count();
+        }
+        const auto str = line.str();
+        for (const unsigned char ch : str) {
+            hash ^= static_cast<uint64_t>(ch);
+            hash *= kFnvPrime;
+        }
+    }
+
+    return to_hex_u64(hash);
 }
 
 // Convert IF_OPER_* code to schema string (matches IFLA_OPERSTATE values)
@@ -863,6 +902,92 @@ ProbeResult<JournalStatus> JournalProbe::collect() const {
 #else
     return JournalStatus{};
 #endif
+}
+
+// -----------------------------------------------------------------------------
+// CrashProbe
+// -----------------------------------------------------------------------------
+
+CrashProbe::CrashProbe(const Config& config,
+                       std::filesystem::path state_dir,
+                       std::filesystem::path pstore_dir)
+    : config_(config)
+    , state_dir_(std::move(state_dir))
+    , pstore_dir_(std::move(pstore_dir)) {}
+
+ProbeResult<CrashStatus> CrashProbe::collect() const {
+    (void)config_;
+    CrashStatus status;
+
+    std::vector<CrashArtifact> artifacts;
+    if (std::error_code ec; std::filesystem::exists(pstore_dir_, ec) && !ec) {
+        for (const auto& entry : std::filesystem::directory_iterator(pstore_dir_, ec)) {
+            if (ec) {
+                break;
+            }
+            if (!entry.is_regular_file(ec) || ec) {
+                continue;
+            }
+
+            CrashArtifact artifact;
+            artifact.name = entry.path().filename().string();
+            artifact.size_bytes = entry.file_size(ec);
+            if (ec) {
+                artifact.size_bytes = 0;
+                ec.clear();
+            }
+            const auto mtime = entry.last_write_time(ec);
+            if (!ec) {
+                artifact.mtime = file_time_to_system_clock(mtime);
+            } else {
+                ec.clear();
+            }
+            artifacts.push_back(std::move(artifact));
+        }
+    }
+
+    std::sort(artifacts.begin(), artifacts.end(), [](const CrashArtifact& a, const CrashArtifact& b) {
+        return a.name < b.name;
+    });
+
+    status.artifact_count = static_cast<uint32_t>(artifacts.size());
+    status.artifacts = artifacts;
+    status.present = !artifacts.empty();
+
+    if (!status.present) {
+        return status;
+    }
+
+    status.source = "pstore";
+    auto latest = std::max_element(artifacts.begin(), artifacts.end(), [](const CrashArtifact& a, const CrashArtifact& b) {
+        return a.mtime.value_or(std::chrono::system_clock::time_point{}) <
+               b.mtime.value_or(std::chrono::system_clock::time_point{});
+    });
+    if (latest != artifacts.end()) {
+        status.last_panic_at = latest->mtime;
+    }
+
+    status.fingerprint = compute_fingerprint(artifacts);
+
+    std::optional<std::string> acknowledged_fp;
+    const auto state_path = state_dir_ / "crash_state.json";
+    {
+        std::ifstream in(state_path);
+        if (in) {
+            try {
+                const auto json = nlohmann::json::parse(in);
+                if (json.contains("acknowledged_fingerprint")) {
+                    acknowledged_fp = json["acknowledged_fingerprint"].get<std::string>();
+                }
+            } catch (const std::exception&) {
+            }
+        }
+    }
+
+    status.acknowledged = acknowledged_fp && status.fingerprint &&
+                          *acknowledged_fp == *status.fingerprint;
+
+    return status;
 }
 
 } // namespace edge

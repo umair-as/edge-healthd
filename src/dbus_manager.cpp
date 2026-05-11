@@ -89,6 +89,15 @@ void HealthManager::update_recent_logs(std::vector<std::string> logs)
     logs_cache_ = std::move(logs);
 }
 
+void HealthManager::emit_alarm(const std::string& component,
+                               const std::string& message,
+                               Severity severity)
+{
+    const std::string sev_str{to_string(severity)};
+    emitHealthAlarm(component, message, sev_str);
+    log::info("HealthAlarm emitted: " + component + " (" + sev_str + ") " + message);
+}
+
 // -----------------------------------------------------------------------------
 // Manager_adaptor overrides (called from sdbus event-loop thread)
 // -----------------------------------------------------------------------------

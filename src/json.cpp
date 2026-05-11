@@ -274,6 +274,36 @@ void to_json(nlohmann::json& j, const JournalStatus& journal) {
     };
 }
 
+void to_json(nlohmann::json& j, const CrashArtifact& artifact) {
+    j = nlohmann::json{
+        {"name", artifact.name},
+        {"size_bytes", artifact.size_bytes}
+    };
+
+    if (artifact.mtime) {
+        j["mtime"] = format_time(*artifact.mtime);
+    }
+}
+
+void to_json(nlohmann::json& j, const CrashStatus& crash) {
+    j = nlohmann::json{
+        {"present", crash.present},
+        {"artifact_count", crash.artifact_count},
+        {"artifacts", crash.artifacts},
+        {"acknowledged", crash.acknowledged}
+    };
+
+    if (crash.source) {
+        j["source"] = *crash.source;
+    }
+    if (crash.last_panic_at) {
+        j["last_panic_at"] = format_time(*crash.last_panic_at);
+    }
+    if (crash.fingerprint) {
+        j["fingerprint"] = *crash.fingerprint;
+    }
+}
+
 void to_json(nlohmann::json& j, const SnapshotSummary& summary) {
     j = nlohmann::json{
         {"severity", std::string(edge::to_string(summary.severity))},
@@ -298,6 +328,7 @@ void to_json(nlohmann::json& j, const SnapshotState& state) {
         {"time_sync", state.time_sync},
         {"update", state.update},
         {"journal", state.journal},
+        {"crash", state.crash},
         {"summary", state.summary}
     };
 }

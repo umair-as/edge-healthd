@@ -270,6 +270,30 @@ private:
 };
 
 // -----------------------------------------------------------------------------
+// CrashProbe
+// Gathers: persisted crash artifacts from systemd-pstore output
+// Sources: /var/lib/systemd/pstore
+// -----------------------------------------------------------------------------
+
+class CrashProbe {
+public:
+    using DataType = CrashStatus;
+
+    explicit CrashProbe(
+        const Config& config,
+        std::filesystem::path state_dir = "/data/edge/health",
+        std::filesystem::path pstore_dir = "/var/lib/systemd/pstore"
+    );
+
+    [[nodiscard]] ProbeResult<CrashStatus> collect() const;
+
+private:
+    const Config& config_;
+    std::filesystem::path state_dir_;
+    std::filesystem::path pstore_dir_;
+};
+
+// -----------------------------------------------------------------------------
 // Concept compliance verification
 // -----------------------------------------------------------------------------
 
@@ -280,5 +304,6 @@ static_assert(Probe<ResourcesProbe>);
 static_assert(Probe<TimeSyncProbe>);
 static_assert(Probe<UpdateProbe>);
 static_assert(Probe<JournalProbe>);
+static_assert(Probe<CrashProbe>);
 
 } // namespace edge
