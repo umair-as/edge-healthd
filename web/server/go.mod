@@ -1,4 +1,4 @@
-module github.com/umair-uas/edge-healthd/web/server
+module github.com/umair-as/edge-healthd/web/server
 
 go 1.22
 

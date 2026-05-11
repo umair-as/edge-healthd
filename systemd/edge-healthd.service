@@ -1,6 +1,6 @@
 [Unit]
 Description=Edge Device Health Monitoring Daemon
-Documentation=https://github.com/umair-uas/edge-healthd
+Documentation=https://github.com/umair-as/edge-healthd
 After=network.target local-fs.target
 Wants=network.target
 StartLimitBurst=5

@@ -35,20 +35,21 @@ python3 scripts/validate_schema.py /data/edge/health/state.json
 
 ## Yocto SDK Cross-Compilation (Raspberry Pi 5)
 
-The project is cross-compiled for the IoT gateway using a Yocto-generated SDK:
+The project is cross-compiled for the IoT gateway using a Yocto-generated SDK. Set `SDK_PATH` to wherever your SDK is installed:
 
-- **SDK path:** `/home/umair/yocto_resource/rpi5-sdk`
 - **Distro:** `iotgw igw.0.1`
 - **Target:** `cortexa76-oe-linux` (ARM64 / Cortex-A76, Raspberry Pi 5)
-- **Toolchain cmake file:** `sysroots/x86_64-oesdk-linux/usr/share/cmake/cortexa76-oe-linux-toolchain.cmake`
+- **Toolchain cmake file:** `$SDK_PATH/sysroots/x86_64-oesdk-linux/usr/share/cmake/cortexa76-oe-linux-toolchain.cmake`
 
 ```bash
+export SDK_PATH=/path/to/rpi5-sdk
+
 # Source the SDK environment (sets CC, CXX, SYSROOT, PKG_CONFIG_PATH, etc.)
-source /home/umair/yocto_resource/rpi5-sdk/environment-setup-cortexa76-oe-linux
+source "$SDK_PATH/environment-setup-cortexa76-oe-linux"
 
 # Cross-compile release build (use a separate build dir to avoid clobbering native build)
 cmake -B build-rpi5 -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_TOOLCHAIN_FILE=/home/umair/yocto_resource/rpi5-sdk/sysroots/x86_64-oesdk-linux/usr/share/cmake/cortexa76-oe-linux-toolchain.cmake \
+  -DCMAKE_TOOLCHAIN_FILE="$SDK_PATH/sysroots/x86_64-oesdk-linux/usr/share/cmake/cortexa76-oe-linux-toolchain.cmake" \
   -DEDGE_FETCH_SDBUSCPP=ON
 
 cmake --build build-rpi5
