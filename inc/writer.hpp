@@ -90,9 +90,6 @@ private:
 
     /// Write content to file atomically
     [[nodiscard]] WriterResult<> write_atomic(const std::string& content) const;
-
-    /// Generate temporary file path
-    [[nodiscard]] std::filesystem::path temp_path() const;
 };
 
 } // namespace edge
