@@ -2,6 +2,7 @@
 // edge-healthd: Probes (non-D-Bus) implementation
 
 #include "probes.hpp"
+#include "atomic_file.hpp"
 #include "config.hpp"
 #include "journal.hpp"
 #include "log.hpp"
@@ -240,21 +241,27 @@ void BootProbe::save_boot_state(const BootState& state) const {
     // Ensure directory exists
     std::error_code ec;
     std::filesystem::create_directories(state_dir_, ec);
+    if (ec) {
+        log::probe_error("boot",
+            "save_boot_state: create_directories(" + state_dir_.string() +
+            ") failed: " + ec.message());
+        return;
+    }
 
-    auto path = state_dir_ / "boot_state.json";
-    auto tmp_path = path.string() + ".tmp";
-
-    nlohmann::json json = {
+    const auto path = state_dir_ / "boot_state.json";
+    const nlohmann::json json = {
         {"last_boot_id", state.last_boot_id},
         {"consecutive_failures", state.consecutive_failures},
         {"last_boot_ok", state.last_boot_ok}
     };
 
-    std::ofstream file(tmp_path);
-    if (file) {
-        file << json.dump(2);
-        file.close();
-        std::filesystem::rename(tmp_path, path, ec);
+    auto result = atomic_write_file(path, json.dump(2));
+    if (!result) {
+        // Surface the failure — the consecutive-failure ratchet depends on
+        // this state surviving a power cut. A silent drop here masks a
+        // boot loop that was about to trip boot_fail_crit.
+        log::probe_error("boot",
+            "save_boot_state: " + result.error().what());
     }
 }
 

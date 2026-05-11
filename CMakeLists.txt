@@ -155,6 +155,7 @@ endif()
 # -----------------------------------------------------------------------------
 
 add_library(edge-snapshot-core STATIC
+    src/atomic_file.cpp
     src/config.cpp
     src/probes.cpp
     src/probes_dbus.cpp
@@ -243,6 +244,7 @@ if(EDGE_BUILD_TESTS)
         tests/test_config.cpp
         tests/test_probes.cpp
         tests/test_aggregator.cpp
+        tests/test_atomic_file.cpp
         tests/test_writer.cpp
         tests/test_json.cpp
         tests/test_journal.cpp
