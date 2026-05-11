@@ -25,13 +25,18 @@ const (
 	maxMessageSize = 512
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	// Only allow connections from same origin in production
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for local use
-	},
+// newUpgrader builds a websocket.Upgrader that enforces a same-origin
+// CheckOrigin (with optional dev allowlist from cfg.AllowedOrigins). Browsers
+// always send Origin on WebSocket handshakes, so a missing Origin indicates
+// a non-browser client and is permitted.
+func newUpgrader(cfg *Config) *websocket.Upgrader {
+	return &websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			return isOriginAllowed(r, cfg.AllowedOrigins)
+		},
+	}
 }
 
 // Client represents a WebSocket client connection

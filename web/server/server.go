@@ -7,16 +7,19 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Server is the main HTTP server
 type Server struct {
-	cfg     *Config
-	mux     *http.ServeMux
-	httpSrv *http.Server
-	hub     *WebSocketHub
-	watcher *StateWatcher
-	state   *StateCache
+	cfg      *Config
+	mux      *http.ServeMux
+	httpSrv  *http.Server
+	hub      *WebSocketHub
+	watcher  *StateWatcher
+	state    *StateCache
+	upgrader *websocket.Upgrader
 }
 
 // StateCache holds the cached state with atomic access
@@ -50,9 +53,10 @@ func (sc *StateCache) Set(data []byte, mtime time.Time) {
 // NewServer creates a new server instance
 func NewServer(cfg *Config) (*Server, error) {
 	s := &Server{
-		cfg:   cfg,
-		mux:   http.NewServeMux(),
-		state: &StateCache{},
+		cfg:      cfg,
+		mux:      http.NewServeMux(),
+		state:    &StateCache{},
+		upgrader: newUpgrader(cfg),
 	}
 
 	// Create WebSocket hub

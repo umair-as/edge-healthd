@@ -25,8 +25,14 @@ func main() {
 	flag.BoolVar(&cfg.LocalOnly, "local-only", true, "Only accept connections from private/local IPs")
 	flag.StringVar(&cfg.TLSCert, "tls-cert", "", "TLS certificate file (PEM); enables HTTPS when set")
 	flag.StringVar(&cfg.TLSKey, "tls-key", "", "TLS private key file (PEM); enables HTTPS when set")
+	var allowedOrigins string
+	flag.StringVar(&allowedOrigins, "allowed-origins", "",
+		"Comma-separated extra Origins permitted for WebSocket + mutating endpoints "+
+			"(host[:port] or full URL). Same-origin is always allowed. Dev proxies "+
+			"like Vite need this; production should leave empty.")
 	showVersion := flag.Bool("version", false, "Show version and exit")
 	flag.Parse()
+	cfg.SetAllowedOrigins(allowedOrigins)
 
 	if *showVersion {
 		fmt.Printf("edge-healthd-ui %s\n", version)
@@ -61,6 +67,16 @@ func main() {
 		log.Printf("Starting edge-healthd-ui (HTTP) on %s", cfg.ListenAddr)
 	}
 	log.Printf("Watching state file: %s", cfg.StateFile)
+
+	if !cfg.LocalOnly {
+		log.Printf("WARNING: -local-only=false — RFC1918 source-IP allowlist is DISABLED. " +
+			"The server will accept connections from any IP. Do not ship this flag.")
+	}
+	if len(cfg.AllowedOrigins) > 0 {
+		log.Printf("WARNING: -allowed-origins is set to %v — only use this for dev proxies "+
+			"(e.g. Vite). Production should leave it empty so only same-origin is accepted.",
+			cfg.AllowedOrigins)
+	}
 
 	if err := srv.Run(ctx); err != nil {
 		log.Fatalf("Server error: %v", err)
