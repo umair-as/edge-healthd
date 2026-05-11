@@ -4,19 +4,24 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Server is the main HTTP server
 type Server struct {
-	cfg     *Config
-	mux     *http.ServeMux
-	httpSrv *http.Server
-	hub     *WebSocketHub
-	watcher *StateWatcher
-	state   *StateCache
+	cfg      *Config
+	mux      *http.ServeMux
+	httpSrv  *http.Server
+	hub      *WebSocketHub
+	watcher  *StateWatcher
+	state    *StateCache
+	upgrader *websocket.Upgrader
+	dbus     *dbusClient
 }
 
 // StateCache holds the cached state with atomic access
@@ -50,9 +55,18 @@ func (sc *StateCache) Set(data []byte, mtime time.Time) {
 // NewServer creates a new server instance
 func NewServer(cfg *Config) (*Server, error) {
 	s := &Server{
-		cfg:   cfg,
-		mux:   http.NewServeMux(),
-		state: &StateCache{},
+		cfg:      cfg,
+		mux:      http.NewServeMux(),
+		state:    &StateCache{},
+		upgrader: newUpgrader(cfg),
+		dbus:     &dbusClient{},
+	}
+
+	// Best-effort prime: connect at startup so the first /api/trigger
+	// click does not pay the connection cost. Failure is non-fatal —
+	// dbusClient.get() will retry on demand (e.g. dev env without dbus).
+	if _, err := s.dbus.get(); err != nil {
+		log.Printf("D-Bus system bus unavailable at startup (%v); /api/trigger will retry on demand", err)
 	}
 
 	// Create WebSocket hub
@@ -133,8 +147,11 @@ func (s *Server) Run(ctx context.Context) error {
 		// Graceful shutdown
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return s.httpSrv.Shutdown(shutdownCtx)
+		err := s.httpSrv.Shutdown(shutdownCtx)
+		s.dbus.close()
+		return err
 	case err := <-errCh:
+		s.dbus.close()
 		return err
 	}
 }

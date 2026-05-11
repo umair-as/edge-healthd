@@ -89,7 +89,10 @@ export async function triggerSnapshot() {
   if (triggerState.value === 'pending') return;
   triggerState.value = 'pending';
   try {
-    const res = await fetch('/api/trigger', { method: 'POST' });
+    const res = await fetch('/api/trigger', {
+      method: 'POST',
+      headers: { 'X-Edge-Health': '1' },
+    });
     if (res.status === 503) {
       triggerState.value = 'unavailable';
     } else if (res.ok) {

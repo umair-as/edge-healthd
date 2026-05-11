@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"github.com/godbus/dbus/v5"
 )
 
 // handleHealthAPI serves the current state.json
@@ -41,15 +39,33 @@ func (s *Server) handleHealthAPI(w http.ResponseWriter, r *http.Request) {
 // handleTrigger calls TriggerSnapshot on the edge.health D-Bus service.
 // Returns {"triggered":true} if accepted, {"triggered":false} if rate-limited,
 // or 503 if the daemon D-Bus service is unavailable (e.g. dev environment).
+//
+// CSRF defense: requires the custom header `X-Edge-Health: 1` plus a same-
+// origin (or -allowed-origins) Origin. A browser cannot set X-Edge-Health on
+// a cross-origin POST without a CORS preflight, and we never reply with the
+// CORS allow-headers a preflight needs — so cross-site fetch() is blocked
+// before it reaches the D-Bus call.
 func (s *Server) handleTrigger(w http.ResponseWriter, r *http.Request) {
-	conn, err := dbus.ConnectSystemBus()
+	if !isOriginAllowed(r, s.cfg.AllowedOrigins) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"forbidden: origin not allowed"}`))
+		return
+	}
+	if r.Header.Get("X-Edge-Health") != "1" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"forbidden: missing X-Edge-Health header"}`))
+		return
+	}
+
+	conn, err := s.dbus.get()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte(`{"error":"D-Bus system bus unavailable"}`))
 		return
 	}
-	defer conn.Close()
 
 	obj := conn.Object("edge.health", "/edge/health/manager")
 	var triggered bool
@@ -73,7 +89,7 @@ func (s *Server) handleTrigger(w http.ResponseWriter, r *http.Request) {
 
 // handleWebSocket upgrades to WebSocket and registers the client
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		// Upgrade already wrote error response
 		return
