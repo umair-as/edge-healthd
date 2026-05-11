@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # benchmark.sh — edge-healthd performance profiler
 #
 # Usage (from host; set REMOTE to your gateway's ssh alias or user@host):

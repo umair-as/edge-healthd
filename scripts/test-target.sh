@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # test-target.sh — edge-healthd functional test suite (v0.5.1+)
 #
 # Usage (from host; set REMOTE to your gateway's ssh alias or user@host):

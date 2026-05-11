@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # trigger-flood.sh — proves TriggerSnapshot has no rate-limit
 #
 # Hammers TriggerSnapshot in a tight loop and measures how many collection

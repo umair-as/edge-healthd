@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # cmake/GetGitVersion.cmake
 # Derives the project version from git tags at configure time.
 #
