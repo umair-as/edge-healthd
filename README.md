@@ -83,7 +83,7 @@ graph TD
     SD[systemd D-Bus] --> SP
     TD[timedate1 D-Bus] --> TP
     JD[sd_journal] --> JP
-    PS[/var/lib/systemd/pstore] --> CP
+    PS["/var/lib/systemd/pstore"] --> CP
 
     DP --> AGG[Aggregator]
     BP --> AGG
@@ -95,7 +95,7 @@ graph TD
     CP --> AGG
 
     AGG --> W[Writer]
-    W --> OUT[/run/health/state.json on tmpfs]
+    W --> OUT["/run/health/state.json on tmpfs"]
     AGG --> DBUS[edge.health.Manager D-Bus]
 
     DAEMON[SnapshotDaemon] -.->|sd-notify + watchdog| AGG
