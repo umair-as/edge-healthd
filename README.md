@@ -15,14 +15,6 @@ A lightweight, offline-first health monitoring daemon for resource-constrained e
 - **Hardened** — `ProtectSystem=strict`, `NoNewPrivileges`, syscall filter, dropped to a single capability (`CAP_NET_RAW`).
 - **Built for offline** — gracefully degrades when D-Bus services (RAUC, timedated) are absent.
 
-## Supported platforms
-
-| Platform | Architecture | Status |
-|----------|-------------|--------|
-| Raspberry Pi 5 | aarch64 | ✅ Production (Yocto `igw.0.1`) |
-| VisionFive2 | riscv64 | 🔨 build-tested |
-| i.MX93 EVK | aarch64 | 🔨 build-tested |
-
 Targets any Linux ≥ 5.10 with systemd ≥ 250. The probe layer degrades cleanly on systems missing optional services (RAUC, timedated, journald).
 
 ## Features
