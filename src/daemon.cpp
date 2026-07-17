@@ -6,9 +6,15 @@
 #include "version.hpp"
 
 #include <chrono>
+#include <climits>
 #include <csignal>
 #include <cstdint>
+#include <mutex>
 #include <thread>
+
+#include <poll.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
 
 #include <sdbus-c++/sdbus-c++.h>
 
@@ -20,9 +26,20 @@ namespace edge {
 
 namespace {
 volatile std::sig_atomic_t g_shutdown_signal = 0;
+// fd written by the signal handler to break the main-loop poll() immediately.
+// Set by setup_signal_handlers(), cleared in the destructor. std::atomic<int>
+// load is lock-free (async-signal-safe) on all supported targets.
+std::atomic<int> g_wakeup_fd{-1};
 
 void handle_shutdown_signal(int) {
     g_shutdown_signal = 1;
+    // Only async-signal-safe calls here: an atomic load and write(2).
+    const int fd = g_wakeup_fd.load(std::memory_order_relaxed);
+    if (fd >= 0) {
+        const uint64_t one = 1;
+        const ssize_t r = write(fd, &one, sizeof(one));
+        (void)r;  // best-effort wakeup; nothing safe to do on failure
+    }
 }
 
 int64_t monotonic_us() {
@@ -32,17 +49,69 @@ int64_t monotonic_us() {
 }
 } // namespace
 
+namespace detail {
+
+bool wait_wakeup_fd(int fd, std::chrono::milliseconds timeout) {
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+
+    const auto count = timeout.count();
+    const int ms = count > INT_MAX ? INT_MAX : static_cast<int>(count);
+
+    // nfds=0 (fd < 0) degrades to a plain timed sleep — still bounded by timeout.
+    const int n = poll(&pfd, fd >= 0 ? 1 : 0, ms);
+    if (n > 0 && (pfd.revents & POLLIN)) {
+        // Drain the eventfd counter so the next poll() blocks again. One read
+        // clears an EFD_NONBLOCK eventfd; the loop just tolerates pipe semantics.
+        uint64_t drained = 0;
+        while (read(fd, &drained, sizeof(drained)) ==
+               static_cast<ssize_t>(sizeof(drained))) {
+        }
+        return true;
+    }
+    // n < 0 → interrupted by a signal (EINTR): report a wakeup so the caller
+    // re-checks shutdown/trigger state. n == 0 → timeout.
+    return n < 0;
+}
+
+bool watchdog_sleep(std::condition_variable_any& cv, std::stop_token st,
+                    std::chrono::nanoseconds timeout) {
+    // A private mutex satisfies the wait_for contract; there is no shared state
+    // to guard — the stop-callback registered by this overload notifies `cv`.
+    std::mutex m;
+    std::unique_lock lock(m);
+    return cv.wait_for(lock, st, timeout,
+                       [&st] { return st.stop_requested(); });
+}
+
+} // namespace detail
+
 // -----------------------------------------------------------------------------
 // SnapshotDaemon implementation
 // -----------------------------------------------------------------------------
 
 SnapshotDaemon::SnapshotDaemon(Config config)
-    : config_(std::move(config)) {}
+    : config_(std::move(config)) {
+    // eventfd woken by the SIGTERM/SIGINT handler (async-signal-safe write) and
+    // the D-Bus trigger callbacks, so the main wait in run() breaks within ~1s
+    // instead of waiting out collect_interval. Non-blocking so draining the
+    // counter never stalls the loop.
+    wakeup_fd_ = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+}
 
 SnapshotDaemon::~SnapshotDaemon() {
     stop_watchdog_thread();
     if (running_.load()) {
         request_shutdown();
+    }
+    // Detach the handler from the fd before closing so a late signal can't
+    // write into a closed (or recycled) descriptor.
+    g_wakeup_fd.store(-1, std::memory_order_relaxed);
+    if (wakeup_fd_ >= 0) {
+        ::close(wakeup_fd_);
+        wakeup_fd_ = -1;
     }
 }
 
@@ -52,6 +121,10 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     std::filesystem::create_directories(config_.state_dir, ec);
     if (ec) {
         return "Failed to create state directory: " + ec.message();
+    }
+
+    if (wakeup_fd_ < 0) {
+        log::warn("eventfd creation failed; shutdown/trigger may be delayed up to collect_interval");
     }
 
     // Warn about unimplemented PTP probe
@@ -94,7 +167,7 @@ std::optional<std::string> SnapshotDaemon::initialize() {
                     last_trigger_time_ = now;
                     trigger_requested_.store(true);
                 }
-                cv_.notify_one();
+                wake();
                 return true;
             });
     } catch (const sdbus::Error& e) {
@@ -123,11 +196,8 @@ std::optional<std::string> SnapshotDaemon::initialize() {
                     log::info("RAUC Completed signal received (result=" +
                               std::to_string(result) + "); scheduling immediate update check");
                     rauc_update_pending_.store(true, std::memory_order_relaxed);
-                    {
-                        std::lock_guard lock(cv_mutex_);
-                        trigger_requested_.store(true);
-                    }
-                    cv_.notify_one();
+                    trigger_requested_.store(true);
+                    wake();
                 });
 
             log::info("Subscribed to RAUC de.pengutronix.rauc.Installer.Completed signal");
@@ -196,20 +266,22 @@ int SnapshotDaemon::run() {
         dbus_connection_->enterEventLoopAsync();
     }
 
-    // Main loop — wait for interval OR a TriggerSnapshot/shutdown wakeup
+    // Main loop — wait for one collect_interval OR an early wakeup.
+    // The wait blocks in poll() on wakeup_fd_ (an eventfd). The SIGTERM/SIGINT
+    // handler and the D-Bus TriggerSnapshot/RAUC callbacks all write the eventfd,
+    // so a shutdown or trigger breaks the wait within ~1s instead of waiting out
+    // the full collect_interval (previously up to collect_interval of latency,
+    // risking systemd's TimeoutStopSec SIGKILL).
+    const auto interval_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(config_.collect_interval);
     while (!shutdown_requested_.load()) {
         if (g_shutdown_signal != 0) {
             request_shutdown();
             break;
         }
 
-        {
-            std::unique_lock lock(cv_mutex_);
-            cv_.wait_for(lock, config_.collect_interval, [this] {
-                return shutdown_requested_.load() || trigger_requested_.load();
-            });
-            trigger_requested_.store(false);
-        }
+        (void)detail::wait_wakeup_fd(wakeup_fd_, interval_ms);
+        trigger_requested_.store(false);
 
         if (shutdown_requested_.load() || g_shutdown_signal != 0) {
             request_shutdown();
@@ -229,10 +301,19 @@ int SnapshotDaemon::run() {
 
 void SnapshotDaemon::request_shutdown() {
     shutdown_requested_.store(true);
-    cv_.notify_all();
+    wake();  // break the main-loop poll() immediately
     if (dbus_connection_) {
         dbus_connection_->leaveEventLoop();
     }
+}
+
+void SnapshotDaemon::wake() noexcept {
+    if (wakeup_fd_ < 0) {
+        return;
+    }
+    const uint64_t one = 1;
+    const ssize_t r = ::write(wakeup_fd_, &one, sizeof(one));
+    (void)r;  // best-effort; EAGAIN just means a wakeup is already pending
 }
 
 void SnapshotDaemon::collect_now() {
@@ -352,6 +433,8 @@ void SnapshotDaemon::collection_cycle() {
 }
 
 void SnapshotDaemon::setup_signal_handlers() {
+    // Publish the wakeup fd so the async-signal-safe handler can break poll().
+    g_wakeup_fd.store(wakeup_fd_, std::memory_order_relaxed);
     std::signal(SIGTERM, handle_shutdown_signal);
     std::signal(SIGINT, handle_shutdown_signal);
 }
@@ -391,7 +474,9 @@ void SnapshotDaemon::start_watchdog_thread() {
 
 void SnapshotDaemon::stop_watchdog_thread() {
     watchdog_thread_.request_stop();
-    // std::jthread destructor auto-joins
+    // request_stop() fires the condition_variable_any stop-callback registered
+    // in watchdog_sleep(), so the loop returns immediately and the jthread
+    // destructor's auto-join does not wait out WatchdogSec/2.
 }
 
 void SnapshotDaemon::update_watchdog_heartbeat() noexcept {
@@ -405,9 +490,12 @@ void SnapshotDaemon::watchdog_loop(std::stop_token st) {
         interval = std::chrono::microseconds(1);
     }
 
-    while (!st.stop_requested()) {
-        std::this_thread::sleep_for(interval);
-
+    // Interruptible sleep: request_stop() notifies watchdog_cv_ via the
+    // condition_variable_any stop-callback, so watchdog_sleep() returns true
+    // immediately and join() on shutdown is fast (was an uninterruptible
+    // sleep_for that blocked join for up to WatchdogSec/2). Only ping while the
+    // heartbeat is fresh (age <= timeout), preserving the previous behaviour.
+    while (!detail::watchdog_sleep(watchdog_cv_, st, interval)) {
         auto last_us = watchdog_heartbeat_us_.load(std::memory_order_relaxed);
         auto age_us = monotonic_us() - last_us;
         if (age_us <= timeout.count()) {

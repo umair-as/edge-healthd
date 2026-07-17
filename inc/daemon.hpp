@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -149,17 +150,21 @@ private:
     // consumers can route on it independently of overall severity.
     std::optional<std::string> last_alarmed_crash_fp_;
 
-    // Condition variable used to interrupt the collection sleep on demand
-    // (TriggerSnapshot D-Bus call or shutdown).
-    // cv_mutex_ also guards last_trigger_time_ for the rate-limit check.
+    // eventfd used to interrupt the collection wait on demand. Written by the
+    // async-signal-safe SIGTERM/SIGINT handler and by the D-Bus TriggerSnapshot
+    // / RAUC callbacks, so a shutdown or trigger breaks poll() within ~1s
+    // instead of waiting out collect_interval. -1 if eventfd creation failed.
+    int wakeup_fd_{-1};
+    // Guards last_trigger_time_ for the TriggerSnapshot rate-limit check.
     std::mutex              cv_mutex_;
-    std::condition_variable cv_;
     std::chrono::steady_clock::time_point last_trigger_time_{
         std::chrono::steady_clock::time_point::min()};
 
     // Internal methods
     void collection_cycle();
     void setup_signal_handlers();
+    // Best-effort write to wakeup_fd_ to break the main-loop poll() early.
+    void wake() noexcept;
     void notify_systemd_ready();
     void start_watchdog_thread();
     void stop_watchdog_thread();
@@ -167,9 +172,28 @@ private:
     void watchdog_loop(std::stop_token st);
 
     std::jthread watchdog_thread_;
+    // Notified by the jthread stop-callback so the watchdog's interruptible
+    // sleep returns immediately on request_stop() (fast join on shutdown).
+    std::condition_variable_any watchdog_cv_;
     std::atomic<int64_t> watchdog_heartbeat_us_{0};
     std::chrono::microseconds watchdog_timeout_{0};
 };
+
+namespace detail {
+
+// Block up to `timeout` waiting for `fd` (an eventfd/pipe) to become readable,
+// draining it if it fired. Returns true on wakeup (fd signaled, or poll
+// interrupted by a signal), false on timeout. Exposed for lifecycle tests.
+[[nodiscard]] bool wait_wakeup_fd(int fd, std::chrono::milliseconds timeout);
+
+// Interruptible sleep used by the watchdog loop: block up to `timeout` on `cv`,
+// returning true immediately if `st` requests stop, false on timeout. Exposed
+// for lifecycle tests.
+[[nodiscard]] bool watchdog_sleep(std::condition_variable_any& cv,
+                                  std::stop_token st,
+                                  std::chrono::nanoseconds timeout);
+
+} // namespace detail
 
 // -----------------------------------------------------------------------------
 // Systemd integration helpers
