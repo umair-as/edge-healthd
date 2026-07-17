@@ -15,6 +15,11 @@
     Method    GetRecentLogs (u) → as      — Return up to max_lines recent journal errors from
                                             the in-memory cache (no sd_journal_open overhead).
                                             Entries are newest-first, pre-formatted strings.
+    Method    AcknowledgeCrash (s) → b    — Acknowledge the current kernel-panic fingerprint.
+                                            Returns true only if the supplied fingerprint matches
+                                            the daemon's current panic fingerprint and the ack was
+                                            persisted (crash_state.json); false otherwise. Clears
+                                            the crash alarm without deleting pstore artifacts.
     Signal    HealthAlarm (s, s, s)       — Emitted when severity degrades (ok→warn, *→crit).
                                             Args: component, message, severity.
 -->
@@ -34,6 +39,11 @@
     <method name="GetRecentLogs">
       <arg name="max_lines" type="u" direction="in"/>
       <arg name="logs"      type="as" direction="out"/>
+    </method>
+
+    <method name="AcknowledgeCrash">
+      <arg name="fingerprint" type="s" direction="in"/>
+      <arg name="success"     type="b" direction="out"/>
     </method>
 
     <signal name="HealthAlarm">

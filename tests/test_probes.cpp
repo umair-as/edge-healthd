@@ -3,13 +3,55 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include "probes.hpp"
+#include "aggregator.hpp"
+#include "atomic_file.hpp"
 #include "config.hpp"
 #include "netlink_monitor.hpp"
 
+#include <nlohmann/json.hpp>
+
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 
 using namespace edge;
+
+namespace {
+
+// Current boot's wall-clock start, mirroring CrashProbe's internal computation
+// (system now minus CLOCK_BOOTTIME uptime). Tests set artifact mtimes relative
+// to this to exercise the current-boot vs prior-boot aging logic.
+std::chrono::system_clock::time_point test_boot_start() {
+    auto start = std::chrono::system_clock::now();
+    if (timespec ts{}; clock_gettime(CLOCK_BOOTTIME, &ts) == 0) {
+        start -= std::chrono::seconds(static_cast<int64_t>(ts.tv_sec));
+    }
+    return start;
+}
+
+// Set a file's mtime to `when` (system_clock), translating into file_clock.
+void set_file_mtime(const std::filesystem::path& p,
+                    std::chrono::system_clock::time_point when) {
+    using namespace std::chrono;
+    const auto delta = when - system_clock::now();
+    const auto ftime = std::filesystem::file_time_type::clock::now() +
+                       duration_cast<std::filesystem::file_time_type::duration>(delta);
+    std::error_code ec;
+    std::filesystem::last_write_time(p, ftime, ec);
+}
+
+std::filesystem::path write_pstore_file(const std::filesystem::path& dir,
+                                        const std::string& name,
+                                        const std::string& body) {
+    const auto path = dir / name;
+    std::ofstream file(path);
+    file << body;
+    file.close();
+    return path;
+}
+
+} // namespace
 
 TEST_CASE("Probe concept compliance", "[probes]") {
     // These are compile-time checks via static_assert in probes.hpp
@@ -153,6 +195,160 @@ TEST_CASE("CrashProbe detects and deduplicates pstore artifacts", "[probes]") {
     CHECK(second->present == true);
     CHECK(second->fingerprint == first->fingerprint);
     CHECK(second->acknowledged == true);
+
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST_CASE("CrashProbe: console-ramoops only is not a panic", "[probes][crash]") {
+    const auto base = std::filesystem::path("/tmp/edge-healthd-crash-console");
+    const auto state_dir = base / "state";
+    const auto pstore_dir = base / "pstore";
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(state_dir, ec);
+    std::filesystem::create_directories(pstore_dir, ec);
+
+    // console-ramoops is the ordinary boot console log, archived every boot —
+    // NOT a kernel fault. It must never drive crit or produce a fingerprint.
+    write_pstore_file(pstore_dir, "console-ramoops-0", "normal boot console output");
+
+    auto config = Config::defaults();
+    CrashProbe probe(config, state_dir, pstore_dir);
+
+    auto r = probe.collect();
+    REQUIRE(r.has_value());
+    CHECK(r->present == true);          // artifact exists (visibility)
+    CHECK(r->panic_count == 0);         // but no kernel-fault dump
+    CHECK_FALSE(r->fingerprint.has_value());
+    CHECK(r->artifacts.size() == 1);
+    CHECK(r->artifacts[0].kind == "informational");
+
+    SnapshotAggregator agg(config);
+    CHECK(agg.evaluate_crash(*r) == Severity::Ok);
+
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST_CASE("CrashProbe: prior-boot panic is historical (warn)", "[probes][crash]") {
+    const auto base = std::filesystem::path("/tmp/edge-healthd-crash-prior");
+    const auto state_dir = base / "state";
+    const auto pstore_dir = base / "pstore";
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(state_dir, ec);
+    std::filesystem::create_directories(pstore_dir, ec);
+
+    auto path = write_pstore_file(pstore_dir, "dmesg-ramoops-0", "Oops from an older kernel");
+    // Age the dump to an hour before this boot started → prior boot.
+    set_file_mtime(path, test_boot_start() - std::chrono::hours(1));
+
+    auto config = Config::defaults();
+    CrashProbe probe(config, state_dir, pstore_dir);
+
+    auto r = probe.collect();
+    REQUIRE(r.has_value());
+    CHECK(r->panic_count == 1);
+    CHECK(r->artifacts[0].kind == "panic");
+    CHECK_FALSE(r->panic_current_boot);
+    CHECK_FALSE(r->acknowledged);
+
+    SnapshotAggregator agg(config);
+    CHECK(agg.evaluate_crash(*r) == Severity::Warn);
+
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST_CASE("CrashProbe: current-boot panic unacked is crit", "[probes][crash]") {
+    const auto base = std::filesystem::path("/tmp/edge-healthd-crash-current");
+    const auto state_dir = base / "state";
+    const auto pstore_dir = base / "pstore";
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(state_dir, ec);
+    std::filesystem::create_directories(pstore_dir, ec);
+
+    auto path = write_pstore_file(pstore_dir, "dmesg-ramoops-0", "Kernel panic - not syncing");
+    set_file_mtime(path, std::chrono::system_clock::now());  // captured this boot
+
+    auto config = Config::defaults();
+    CrashProbe probe(config, state_dir, pstore_dir);
+
+    auto r = probe.collect();
+    REQUIRE(r.has_value());
+    CHECK(r->panic_count == 1);
+    CHECK(r->panic_current_boot);
+    CHECK_FALSE(r->acknowledged);
+
+    SnapshotAggregator agg(config);
+    CHECK(agg.evaluate_crash(*r) == Severity::Crit);
+
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST_CASE("CrashProbe: acknowledged current-boot panic is not crit", "[probes][crash]") {
+    const auto base = std::filesystem::path("/tmp/edge-healthd-crash-ack");
+    const auto state_dir = base / "state";
+    const auto pstore_dir = base / "pstore";
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(state_dir, ec);
+    std::filesystem::create_directories(pstore_dir, ec);
+
+    auto path = write_pstore_file(pstore_dir, "dmesg-ramoops-0", "Kernel panic - not syncing");
+    set_file_mtime(path, std::chrono::system_clock::now());
+
+    auto config = Config::defaults();
+    CrashProbe probe(config, state_dir, pstore_dir);
+
+    auto first = probe.collect();
+    REQUIRE(first.has_value());
+    REQUIRE(first->fingerprint.has_value());
+    SnapshotAggregator agg(config);
+    CHECK(agg.evaluate_crash(*first) == Severity::Crit);  // fresh, unacked
+
+    // Simulate AcknowledgeCrash: persist the panic fingerprint atomically, the
+    // same way SnapshotDaemon's on_acknowledge_ callback does.
+    nlohmann::json j;
+    j["acknowledged_fingerprint"] = *first->fingerprint;
+    auto w = atomic_write_file(state_dir / "crash_state.json", j.dump(2));
+    REQUIRE(w.has_value());
+
+    auto second = probe.collect();
+    REQUIRE(second.has_value());
+    CHECK(second->acknowledged == true);
+    CHECK(agg.evaluate_crash(*second) == Severity::Ok);  // acked → informational
+
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST_CASE("CrashProbe: fingerprint stable when only console artifact changes",
+          "[probes][crash]") {
+    const auto base = std::filesystem::path("/tmp/edge-healthd-crash-stable");
+    const auto state_dir = base / "state";
+    const auto pstore_dir = base / "pstore";
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(state_dir, ec);
+    std::filesystem::create_directories(pstore_dir, ec);
+
+    write_pstore_file(pstore_dir, "dmesg-ramoops-0", "Kernel panic - not syncing");
+    write_pstore_file(pstore_dir, "console-ramoops-0", "boot log rev 1");
+
+    auto config = Config::defaults();
+    CrashProbe probe(config, state_dir, pstore_dir);
+
+    auto first = probe.collect();
+    REQUIRE(first.has_value());
+    REQUIRE(first->fingerprint.has_value());
+
+    // Rewrite only the benign console artifact (as happens every boot). The
+    // panic-only fingerprint must not churn.
+    write_pstore_file(pstore_dir, "console-ramoops-0", "boot log rev 2 — different size!!");
+
+    auto second = probe.collect();
+    REQUIRE(second.has_value());
+    REQUIRE(second->fingerprint.has_value());
+    CHECK(second->fingerprint == first->fingerprint);
 
     std::filesystem::remove_all(base, ec);
 }

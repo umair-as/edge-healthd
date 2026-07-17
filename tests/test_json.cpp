@@ -142,6 +142,7 @@ TEST_CASE("JSON serialize CrashStatus", "[json]") {
     CrashArtifact artifact;
     artifact.name = "dmesg-erst-0";
     artifact.size_bytes = 1024;
+    artifact.kind = "panic";
     crash.artifacts.push_back(artifact);
 
     auto j = nlohmann::json(crash);
@@ -152,6 +153,7 @@ TEST_CASE("JSON serialize CrashStatus", "[json]") {
     CHECK(j["artifact_count"] == 1);
     CHECK(j["acknowledged"] == false);
     CHECK(j["artifacts"][0]["name"] == "dmesg-erst-0");
+    CHECK(j["artifacts"][0]["kind"] == "panic");
 }
 
 TEST_CASE("JSON ptp.enabled reflects config in snapshot", "[json][ptp]") {

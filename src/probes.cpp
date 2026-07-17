@@ -416,6 +416,15 @@ std::string to_hex_u64(uint64_t value) {
     return oss.str();
 }
 
+// Classify a pstore artifact by filename. Only kernel-fault dumps count as a
+// panic: dmesg-* (dmesg-ramoops-*, dmesg-efi-*, dmesg-erst-*) and EFI dump-*.
+// Everything else — console-ramoops-* (ordinary boot console log, archived every
+// boot), pmsg-*, ftrace-*, unknown names — is informational and never drives
+// severity or alarms.
+bool is_panic_artifact_name(const std::string& name) {
+    return name.rfind("dmesg-", 0) == 0 || name.rfind("dump-", 0) == 0;
+}
+
 std::string compute_fingerprint(const std::vector<CrashArtifact>& artifacts) {
     constexpr uint64_t kFnvOffset = 14695981039346656037ull;
     constexpr uint64_t kFnvPrime = 1099511628211ull;
@@ -926,6 +935,16 @@ ProbeResult<CrashStatus> CrashProbe::collect() const {
     (void)config_;
     CrashStatus status;
 
+    // Current boot's wall-clock start, computed the same way BootProbe reads
+    // uptime: now() minus CLOCK_BOOTTIME seconds. A panic artifact whose mtime
+    // is at or after this instant was captured during the current boot; an
+    // earlier mtime is a historical dump carried over from a prior boot.
+    std::chrono::system_clock::time_point boot_start =
+        std::chrono::system_clock::now();
+    if (timespec ts{}; clock_gettime(CLOCK_BOOTTIME, &ts) == 0) {
+        boot_start -= std::chrono::seconds(static_cast<int64_t>(ts.tv_sec));
+    }
+
     std::vector<CrashArtifact> artifacts;
     if (std::error_code ec; std::filesystem::exists(pstore_dir_, ec) && !ec) {
         for (const auto& entry : std::filesystem::directory_iterator(pstore_dir_, ec)) {
@@ -949,6 +968,8 @@ ProbeResult<CrashStatus> CrashProbe::collect() const {
             } else {
                 ec.clear();
             }
+            artifact.kind = is_panic_artifact_name(artifact.name) ? "panic"
+                                                                  : "informational";
             artifacts.push_back(std::move(artifact));
         }
     }
@@ -961,20 +982,45 @@ ProbeResult<CrashStatus> CrashProbe::collect() const {
     status.artifacts = artifacts;
     status.present = !artifacts.empty();
 
-    if (!status.present) {
+    // Severity and fingerprint key off PANIC artifacts only, so a benign
+    // console-ramoops that is rewritten every boot never forces crit and never
+    // churns the fingerprint. `present` still reflects any artifact for visibility.
+    std::vector<CrashArtifact> panic_artifacts;
+    for (const auto& a : artifacts) {
+        if (a.kind == "panic") {
+            panic_artifacts.push_back(a);
+        }
+    }
+    status.panic_count = static_cast<uint32_t>(panic_artifacts.size());
+
+    if (panic_artifacts.empty()) {
+        // No kernel-fault dumps: nothing panic-related to fingerprint or age.
         return status;
     }
 
     status.source = "pstore";
-    auto latest = std::max_element(artifacts.begin(), artifacts.end(), [](const CrashArtifact& a, const CrashArtifact& b) {
-        return a.mtime.value_or(std::chrono::system_clock::time_point{}) <
-               b.mtime.value_or(std::chrono::system_clock::time_point{});
-    });
-    if (latest != artifacts.end()) {
+
+    auto latest = std::max_element(
+        panic_artifacts.begin(), panic_artifacts.end(),
+        [](const CrashArtifact& a, const CrashArtifact& b) {
+            return a.mtime.value_or(std::chrono::system_clock::time_point{}) <
+                   b.mtime.value_or(std::chrono::system_clock::time_point{});
+        });
+    if (latest != panic_artifacts.end()) {
         status.last_panic_at = latest->mtime;
     }
 
-    status.fingerprint = compute_fingerprint(artifacts);
+    // A panic captured in the current boot pins overall crit; panics only from
+    // prior boots are historical (warn). Missing mtime is treated as current-boot
+    // (fail safe toward surfacing, not hiding, a fault).
+    for (const auto& a : panic_artifacts) {
+        if (!a.mtime || *a.mtime >= boot_start) {
+            status.panic_current_boot = true;
+            break;
+        }
+    }
+
+    status.fingerprint = compute_fingerprint(panic_artifacts);
 
     std::optional<std::string> acknowledged_fp;
     const auto state_path = state_dir_ / "crash_state.json";

@@ -149,6 +149,13 @@ private:
     // consumers can route on it independently of overall severity.
     std::optional<std::string> last_alarmed_crash_fp_;
 
+    // Current kernel-panic fingerprint (nullopt when no panic artifacts are
+    // present). Updated every collection_cycle() and read by the AcknowledgeCrash
+    // D-Bus callback, which may run on the sdbus event-loop thread — guard with
+    // its own mutex so the ack path never blocks on state_mutex_.
+    std::mutex                 crash_fp_mutex_;
+    std::optional<std::string> current_panic_fingerprint_;
+
     // Condition variable used to interrupt the collection sleep on demand
     // (TriggerSnapshot D-Bus call or shutdown).
     // cv_mutex_ also guards last_trigger_time_ for the rate-limit check.

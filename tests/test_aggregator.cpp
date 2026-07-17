@@ -162,7 +162,7 @@ TEST_CASE("Aggregator generates reasons", "[aggregator]") {
     CHECK(has_service_reason);
 }
 
-TEST_CASE("Aggregator adds crash reasons", "[aggregator]") {
+TEST_CASE("Aggregator adds crash reasons for current-boot panic", "[aggregator]") {
     auto config = Config::defaults();
     SnapshotAggregator agg(config);
 
@@ -176,6 +176,8 @@ TEST_CASE("Aggregator adds crash reasons", "[aggregator]") {
     CrashStatus crash;
     crash.present = true;
     crash.acknowledged = false;
+    crash.panic_count = 1;
+    crash.panic_current_boot = true;  // fresh kernel fault this boot → crit
 
     auto state = agg.aggregate(device, boot, services, resources, time_sync, update, journal, crash);
 
@@ -192,4 +194,65 @@ TEST_CASE("Aggregator adds crash reasons", "[aggregator]") {
     CHECK(has_kernel_panic);
     CHECK(has_pstore_present);
     CHECK(state.summary.severity == Severity::Crit);
+}
+
+TEST_CASE("Aggregator: prior-boot panic is historical, not crit", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    CrashStatus crash;
+    crash.present = true;
+    crash.acknowledged = false;
+    crash.panic_count = 1;
+    crash.panic_current_boot = false;  // only prior-boot dumps → warn
+
+    auto state = agg.aggregate({}, {}, {}, {}, {}, {}, {}, crash);
+
+    bool has_kernel_panic = false;
+    bool has_historical = false;
+    for (const auto& reason : state.summary.reasons) {
+        if (reason == "kernel_panic_detected") has_kernel_panic = true;
+        if (reason == "historical_crash_artifacts") has_historical = true;
+    }
+    CHECK_FALSE(has_kernel_panic);
+    CHECK(has_historical);
+    CHECK(state.summary.severity == Severity::Warn);
+}
+
+TEST_CASE("Aggregator: evaluate_crash severity truth table", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    // No panic artifacts (benign console log or empty pstore) → Ok.
+    {
+        CrashStatus c;
+        c.present = true;  // an informational artifact may still be present
+        c.panic_count = 0;
+        CHECK(agg.evaluate_crash(c) == Severity::Ok);
+    }
+    // Current-boot unacked panic → Crit.
+    {
+        CrashStatus c;
+        c.present = true;
+        c.panic_count = 1;
+        c.panic_current_boot = true;
+        CHECK(agg.evaluate_crash(c) == Severity::Crit);
+    }
+    // Prior-boot unacked panic → Warn.
+    {
+        CrashStatus c;
+        c.present = true;
+        c.panic_count = 1;
+        c.panic_current_boot = false;
+        CHECK(agg.evaluate_crash(c) == Severity::Warn);
+    }
+    // Acknowledged panic (even current boot) → Ok (informational).
+    {
+        CrashStatus c;
+        c.present = true;
+        c.panic_count = 1;
+        c.panic_current_boot = true;
+        c.acknowledged = true;
+        CHECK(agg.evaluate_crash(c) == Severity::Ok);
+    }
 }
