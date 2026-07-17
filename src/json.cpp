@@ -3,12 +3,21 @@
 
 #include "json.hpp"
 
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 
 namespace edge {
 
 namespace {
+
+// Coerce non-finite doubles to a schema-valid value. NaN/Inf serialize to JSON
+// `null` under nlohmann::json, which is invalid against the schema for the
+// required numeric fields cpu.load{1,5,15} and thermal[].temp_c. Emit 0.0 so
+// the snapshot stays schema-valid instead of silently producing `null`.
+double finite_or_zero(double v) {
+    return (std::isnan(v) || std::isinf(v)) ? 0.0 : v;
+}
 
 // Format time_point as ISO 8601 string
 std::string format_time(const std::chrono::system_clock::time_point& tp) {
@@ -89,9 +98,9 @@ void to_json(nlohmann::json& j, const ServicesStatus& services) {
 
 void to_json(nlohmann::json& j, const CpuLoad& cpu) {
     j = nlohmann::json{
-        {"load1", cpu.load1},
-        {"load5", cpu.load5},
-        {"load15", cpu.load15}
+        {"load1", finite_or_zero(cpu.load1)},
+        {"load5", finite_or_zero(cpu.load5)},
+        {"load15", finite_or_zero(cpu.load15)}
     };
 }
 
@@ -115,7 +124,7 @@ void to_json(nlohmann::json& j, const StorageMount& mount) {
 void to_json(nlohmann::json& j, const ThermalSensor& sensor) {
     j = nlohmann::json{
         {"sensor", sensor.sensor},
-        {"temp_c", sensor.temp_c}
+        {"temp_c", finite_or_zero(sensor.temp_c)}
     };
 }
 
@@ -337,12 +346,15 @@ namespace json {
 
 std::string serialize(const SnapshotState& state) {
     nlohmann::json j = state;
-    return j.dump();
+    // error_handler_t::replace: emit U+FFFD for any invalid UTF-8 instead of
+    // throwing type_error(316). Journal/unit log text is arbitrary bytes, and a
+    // strict dump() throwing here (uncaught) crash-loops the daemon.
+    return j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
 std::string serialize_pretty(const SnapshotState& state, int indent) {
     nlohmann::json j = state;
-    return j.dump(indent);
+    return j.dump(indent, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
 } // namespace json

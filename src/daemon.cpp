@@ -8,6 +8,8 @@
 #include <chrono>
 #include <csignal>
 #include <cstdint>
+#include <exception>
+#include <string>
 #include <thread>
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -305,9 +307,16 @@ void SnapshotDaemon::collection_cycle() {
 
     state.cycle = ++cycle_count_;
 
-    // Write to file
-    if (auto result = writer_->write(state); !result) {
-        log::writer_error("Failed to write snapshot: " + result.error().message);
+    // Write to file. Serialization can, in principle, still throw (e.g. a future
+    // field or an nlohmann edge case the UTF-8 replace handler doesn't cover);
+    // contain it here so one bad snapshot never terminates the daemon and turns
+    // into a restart crash-loop. Continue with the previous good state on disk.
+    try {
+        if (auto result = writer_->write(state); !result) {
+            log::writer_error("Failed to write snapshot: " + result.error().message);
+        }
+    } catch (const std::exception& ex) {
+        log::writer_error(std::string("Snapshot serialization failed: ") + ex.what());
     }
 
     // Update current state and capture severity transition
