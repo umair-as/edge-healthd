@@ -249,6 +249,11 @@ if(EDGE_BUILD_TESTS)
         tests/test_json.cpp
         tests/test_journal.cpp
         tests/test_serialization_safety.cpp
+        tests/test_daemon_lifecycle.cpp
+        # daemon.cpp is not part of edge-snapshot-core (it lives in the
+        # executable); compile it in so the lifecycle test can reach the
+        # detail:: shutdown/watchdog helpers.
+        src/daemon.cpp
     )
 
     target_link_libraries(edge-snapshot-tests
