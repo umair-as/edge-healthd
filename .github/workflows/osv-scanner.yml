@@ -1,0 +1,47 @@
+name: osv-scanner
+
+# Presence-based dependency vulnerability scan (OSV database) for the Go web UI
+# module. Complements govulncheck: govulncheck is reachability-aware and will
+# skip vulnerable-but-unused deps, whereas OSV-Scanner flags anything present in
+# the graph — the class of issue PR #49 removed (an unused x/crypto CVSS 9.0).
+#
+# Scope note: only the Go module is *gated* here. The web/ui npm graph carries
+# dev-only build-tooling advisories (vite/esbuild/rollup) that don't ship in the
+# built UI; those are handled by Dependabot's grouped bump PRs, not a blocking
+# gate, to avoid red CI on non-shipping dev dependencies.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'web/server/go.mod'
+      - 'web/server/go.sum'
+      - '.github/workflows/osv-scanner.yml'
+  schedule:
+    # Weekly — catches advisories newly published against unchanged deps.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: osv-scanner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  osv-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Install osv-scanner
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.4.0
+
+      - name: Scan Go module (blocking)
+        run: osv-scanner scan source --lockfile=web/server/go.mod

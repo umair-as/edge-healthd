@@ -1,0 +1,48 @@
+version: 2
+
+# Automated dependency-update PRs. Free on GitHub for public and private repos.
+# Updates are grouped per-ecosystem into a single weekly PR to keep churn low.
+updates:
+  # Go module — the optional web UI server (web/server).
+  - package-ecosystem: "gomod"
+    directory: "/web/server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(web/deps)"
+    labels: ["dependencies", "go"]
+    groups:
+      go-modules:
+        patterns: ["*"]
+
+  # npm — the Preact/TypeScript web UI (web/ui). Most findings here are dev-only
+  # build tooling (vite, esbuild, rollup); grouped bumps let CI verify the build.
+  - package-ecosystem: "npm"
+    directory: "/web/ui"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(web/ui/deps)"
+    labels: ["dependencies", "javascript"]
+    groups:
+      npm-dev:
+        dependency-type: "development"
+        patterns: ["*"]
+      npm-prod:
+        dependency-type: "production"
+        patterns: ["*"]
+
+  # Keep GitHub Actions pins current (includes the CodeQL / OSV-Scanner deps).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels: ["ci", "dependencies"]
+    groups:
+      github-actions:
+        patterns: ["*"]
