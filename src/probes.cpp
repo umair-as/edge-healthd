@@ -4,6 +4,7 @@
 #include "probes.hpp"
 #include "atomic_file.hpp"
 #include "config.hpp"
+#include "ethtool_link.hpp"
 #include "journal.hpp"
 #include "log.hpp"
 #include "netlink_monitor.hpp"
@@ -688,6 +689,11 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
         iface_list = monitored_interfaces_;
     }
 
+    // Query link speed/duplex for all interfaces via the ethtool generic-netlink
+    // family (one socket for the batch). Absent/failed entries just leave the
+    // fields unset — link-down or ethtool-less interfaces omit speed/duplex.
+    const auto ethtool_map = ethtool_query_links(iface_list);
+
     for (const auto& ifname : iface_list) {
         NetworkInterface iface;
         iface.ifname = ifname;
@@ -725,6 +731,12 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
             iface.carrier_up_count = nl->carrier_up_count;
             iface.carrier_down_count = nl->carrier_down_count;
 
+        }
+
+        // Link speed/duplex from the ethtool query (if the interface reported it).
+        if (auto eit = ethtool_map.find(ifname); eit != ethtool_map.end()) {
+            iface.speed_mbps = eit->second.speed_mbps;
+            iface.duplex = eit->second.duplex;
         }
         // Note: We removed the ioctl fallback because the persistent Netlink
         // monitor is more reliable and handles state changes via multicast.
