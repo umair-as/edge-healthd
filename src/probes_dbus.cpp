@@ -4,6 +4,7 @@
 #include "probes.hpp"
 #include "config.hpp"
 #include "journal.hpp"
+#include "journal_reader.hpp"
 
 #include <cctype>
 #include <chrono>
@@ -45,105 +46,17 @@ bool is_safe_unit_name(std::string_view name) {
     return true;
 }
  
-#ifdef EDGE_HAS_SYSTEMD
-// Helper function to collect journal log excerpts using sd_journal
-static std::vector<std::string> get_journal_excerpt(const std::string& unit_name, const Config& cfg) {
-    std::vector<JournalEntry> raw;
-    sd_journal* journal = nullptr;
-    int ret = sd_journal_open(&journal, SD_JOURNAL_SYSTEM);
-    if (ret < 0 || !journal) {
-        // Try current_user as fallback for unprivileged runs
-        ret = sd_journal_open(&journal, SD_JOURNAL_CURRENT_USER);
-        if (ret < 0 || !journal) {
-            // Try local-only as last fallback
-            ret = sd_journal_open(&journal, SD_JOURNAL_LOCAL_ONLY);
-            if (ret < 0 || !journal) {
-                log::debug("Failed to open journal for unit: " + unit_name);
-                return {};
-            }
-        }
-    }
-
-    struct JournalGuard { sd_journal* j; ~JournalGuard(){ if (j) sd_journal_close(j); } } guard{journal};
-
-    std::string unit_filter = "_SYSTEMD_UNIT=" + unit_name;
-    ret = sd_journal_add_match(journal, unit_filter.c_str(), 0);
-    if (ret < 0) {
-        log::debug("Failed to add journal filter for unit: " + unit_name);
-        return {};
-    }
-
-    // Also try alternate fields that journalctl -u uses (UNIT= and SYSLOG_IDENTIFIER)
-    std::string unit_field = "UNIT=" + unit_name;
-    sd_journal_add_disjunction(journal);
-    sd_journal_add_match(journal, unit_field.c_str(), 0);
-    std::string syslog_filter = "SYSLOG_IDENTIFIER=" + unit_name;
-    sd_journal_add_disjunction(journal);
-    sd_journal_add_match(journal, syslog_filter.c_str(), 0);
-
-    ret = sd_journal_seek_tail(journal);
-    if (ret < 0) {
-        log::debug("Failed to seek to end of journal");
-        return {};
-    }
-
-    // Move to most recent entry
-    ret = sd_journal_previous(journal);
-    if (ret <= 0) {
-        return {}; // no entries
-    }
-
-    const size_t max_collect = std::max<size_t>(cfg.log_excerpt_max_lines ? cfg.log_excerpt_max_lines : 20, 200);
-
-    for (size_t i = 0; i < max_collect; ++i) {
-        // Read timestamp
-        uint64_t usec = 0;
-        if (sd_journal_get_realtime_usec(journal, &usec) < 0) usec = 0;
-
-        // Read priority
-        int pri = 6;
-        const void* pdata = nullptr;
-        size_t plen = 0;
-        if (sd_journal_get_data(journal, "PRIORITY", &pdata, &plen) >= 0 && pdata) {
-            const char* pstr = static_cast<const char*>(pdata);
-            if (plen > 9 && std::strncmp(pstr, "PRIORITY=", 9) == 0) pstr += 9;
-            pri = std::atoi(pstr);
-        }
-
-        // Read message
-        const void* data = nullptr;
-        size_t length = 0;
-        std::string msg;
-        if (sd_journal_get_data(journal, "MESSAGE", &data, &length) >= 0 && data) {
-            const char* ptr = static_cast<const char*>(data);
-            if (length > 8 && std::strncmp(ptr, "MESSAGE=", 8) == 0) {
-                ptr += 8;
-                length -= 8;
-            }
-            // MESSAGE is arbitrary bytes; scrub invalid UTF-8 so it can never
-            // make the snapshot serializer throw (defense in depth).
-            msg = sanitize_utf8(std::string_view(ptr, std::min(length, static_cast<size_t>(1024))));
-        }
-
-        raw.push_back(JournalEntry{usec, pri, std::move(msg)});
-
-        ret = sd_journal_previous(journal);
-        if (ret <= 0) break;
-    }
-
-    // Use filtering helper to apply priority/window/max_lines and format lines.
-    return filter_journal_entries(cfg, raw);
-}
-#endif
 
 } // namespace
 
 ServicesProbe::ServicesProbe(const Config& config,
                                      sdbus::IConnection* dbus,
-                                     std::span<const std::string> monitored_units)
+                                     std::span<const std::string> monitored_units,
+                                     const JournalReader* journal)
     : config_(config)
     , dbus_(dbus)
-    , monitored_units_(monitored_units.begin(), monitored_units.end()) {
+    , monitored_units_(monitored_units.begin(), monitored_units.end())
+    , journal_(journal) {
 
     // Use config defaults if not specified
     if (monitored_units_.empty()) {
@@ -274,20 +187,11 @@ ServiceUnit ServicesProbe::query_unit(const std::string& unit_name,
         } catch (const sdbus::Error&) {
         }
 
-        // Collect a short log excerpt for the unit (recent lines) using sd-journal when available.
-#ifdef EDGE_HAS_SYSTEMD
-        try {
-            auto lines = get_journal_excerpt(unit_name, config_);
-            if (!lines.empty()) {
-                unit.log_excerpt = std::move(lines);
-                log::debug("Added " + std::to_string(unit.log_excerpt.size()) + " log lines for " + unit_name);
-            } else {
-                log::debug("No log lines found for " + unit_name);
-            }
-        } catch (const std::exception& e) {
-            log::debug("Failed to get logs for " + unit_name + ": " + e.what());
+        // Short log excerpt for the unit, filtered from the shared persistent
+        // journal buffer — no sd_journal_open() per unit per cycle.
+        if (journal_) {
+            unit.log_excerpt = journal_->excerpt_for_unit(unit_name);
         }
-#endif
     } catch (const sdbus::Error& err) {
         unit.detail = err.getMessage();
     }

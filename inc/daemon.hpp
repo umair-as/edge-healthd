@@ -104,6 +104,7 @@ private:
     std::unique_ptr<SnapshotAggregator> aggregator_;
     std::unique_ptr<SnapshotWriter> writer_;
     std::unique_ptr<NetlinkMonitor> nl_monitor_;  // Netlink monitor instance
+    std::unique_ptr<JournalReader> journal_reader_; // persistent journal buffer
 
     // D-Bus service (optional — gracefully absent if bus unavailable)
     // Declared before health_manager_ so connection outlives the adaptor.

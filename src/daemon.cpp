@@ -3,6 +3,7 @@
 
 #include "daemon.hpp"
 #include "atomic_file.hpp"
+#include "journal_reader.hpp"
 #include "netlink_monitor.hpp"
 #include "version.hpp"
 
@@ -247,10 +248,21 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     // Initialize probes — D-Bus-capable probes receive the shared connection.
     // Null is safe: each probe degrades gracefully when dbus_ is nullptr.
     sdbus::IConnection* dbus = dbus_connection_.get();
+
+    // Persistent journal reader: open the journal once and prime the buffer, then
+    // every cycle only ingests new entries. The Services and Journal probes read
+    // from it instead of opening the journal per unit per cycle. A failed open
+    // leaves the reader degraded (journal fields empty/Ok), as before.
+    journal_reader_ = std::make_unique<JournalReader>(config_);
+    if (!journal_reader_->init()) {
+        log::warn("journal reader unavailable; journal severity and log excerpts "
+                  "will be empty");
+    }
+
     device_probe_ = std::make_unique<DeviceProbe>(config_);
     boot_probe_ = std::make_unique<BootProbe>(config_, config_.state_dir);
     services_probe_ = std::make_unique<ServicesProbe>(
-        config_, dbus, config_.monitored_services);
+        config_, dbus, config_.monitored_services, journal_reader_.get());
     resources_probe_ = std::make_unique<ResourcesProbe>(
         config_,
         *nl_monitor_,
@@ -259,7 +271,7 @@ std::optional<std::string> SnapshotDaemon::initialize() {
     );
     time_sync_probe_ = std::make_unique<TimeSyncProbe>(config_, dbus);
     update_probe_ = std::make_unique<UpdateProbe>(config_, dbus);
-    journal_probe_ = std::make_unique<JournalProbe>(config_);
+    journal_probe_ = std::make_unique<JournalProbe>(config_, journal_reader_.get());
     crash_probe_ = std::make_unique<CrashProbe>(config_, config_.state_dir);
 
     // Set up per-probe collection schedules.
@@ -366,9 +378,14 @@ void SnapshotDaemon::collection_cycle() {
 
     auto now = std::chrono::steady_clock::now();
 
-    // Drain pending netlink events before resource collection
+    // Refresh the persistent sources before collection: drain netlink events and
+    // pull new journal entries into the in-memory buffer (one sd_journal_process,
+    // no per-cycle open).
     if (nl_monitor_) {
         nl_monitor_->drain_events();
+    }
+    if (journal_reader_) {
+        journal_reader_->ingest();
     }
 
     // Collect probe if due; on success update last_known_good_ and advance schedule.
