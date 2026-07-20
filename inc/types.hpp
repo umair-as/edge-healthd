@@ -135,7 +135,18 @@ struct DeviceInfo {
     OsInfo os;
 };
 
+// Per-section observability metadata (M2). collected_at is the wall-clock time
+// of the last successful collection (nullopt until the first success — i.e. a
+// never-observed section stays severity unknown, not stale). stale is set when a
+// previously-collected section is now past its freshness window; the aggregator
+// then raises it to at least Severity::Stale.
+struct SectionFreshness {
+    std::optional<std::chrono::system_clock::time_point> collected_at;
+    bool stale = false;
+};
+
 struct BootStatus {
+    SectionFreshness freshness;
     std::string boot_id;       // systemd boot ID (UUID)
     std::chrono::system_clock::time_point last_boot_at;
     std::chrono::seconds uptime;
@@ -156,6 +167,7 @@ struct ServiceUnit {
 };
 
 struct ServicesStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     std::vector<ServiceUnit> units;
 };
@@ -220,6 +232,7 @@ struct NetworkInterface {
 };
 
 struct ResourcesStatus {
+    SectionFreshness freshness;
     uint32_t sample_window_sec = 60;
     CpuLoad cpu;
     MemoryUsage memory;
@@ -252,6 +265,7 @@ struct RtcStatus {
 };
 
 struct TimeSyncStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     TimeSyncSource source = TimeSyncSource::None;
     NtpStatus ntp;
@@ -267,12 +281,14 @@ struct LastUpdate {
 };
 
 struct UpdateStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     std::optional<std::string> active_slot;
     std::optional<LastUpdate> last_update;
 };
 
 struct JournalStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     uint32_t error_count = 0;               // entries collected in scan window
     std::vector<std::string> recent_errors; // newest first, capped by config
@@ -289,6 +305,7 @@ struct CrashArtifact {
 };
 
 struct CrashStatus {
+    SectionFreshness freshness;
     bool present = false;              // any pstore artifact exists (all kinds)
     std::optional<std::string> source; // "pstore"
     std::optional<std::chrono::system_clock::time_point> last_panic_at;

@@ -386,6 +386,11 @@ void SnapshotDaemon::collection_cycle() {
             cache = std::move(*result);
             sched.next_run = now + sched.interval;
             sched.has_result = true;
+            // Stamp freshness on sections that carry it (all but DeviceInfo).
+            if constexpr (requires { cache.freshness; }) {
+                cache.freshness.collected_at = std::chrono::system_clock::now();
+                cache.freshness.stale = false;
+            }
         } else {
             log::probe_error(std::string(name), result.error().message);
             // has_result stays false on first-run failure → retried next cycle
@@ -415,6 +420,24 @@ void SnapshotDaemon::collection_cycle() {
         crash_schedule_.next_run = now;
     }
     maybe_collect(*crash_probe_,     crash_schedule_,     last_known_good_.crash,     "crash");
+
+    // Mark a section stale if it was collected before but is now past its
+    // freshness window (one missed cadence, 30s floor). A never-collected section
+    // (has_result=false) is NOT marked stale — it stays severity unknown, so a
+    // warm-up / absent dependency does not raise the roll-up.
+    auto mark_stale = [&](const ProbeSchedule& sched, auto& section) {
+        if (sched.has_result && sched.interval.count() > 0) {
+            const auto grace = std::max(sched.interval, std::chrono::seconds{30});
+            section.freshness.stale = now > sched.next_run + grace;
+        }
+    };
+    mark_stale(boot_schedule_,      last_known_good_.boot);
+    mark_stale(services_schedule_,  last_known_good_.services);
+    mark_stale(resources_schedule_, last_known_good_.resources);
+    mark_stale(time_sync_schedule_, last_known_good_.time_sync);
+    mark_stale(update_schedule_,    last_known_good_.update);
+    mark_stale(journal_schedule_,   last_known_good_.journal);
+    mark_stale(crash_schedule_,     last_known_good_.crash);
 
     // Aggregate using last known good values for all probes
     auto state = aggregator_->aggregate(

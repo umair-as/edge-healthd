@@ -106,6 +106,38 @@ TEST_CASE("Aggregator: unreadable storage/thermal is unavailable, not ok", "[agg
     }
 }
 
+TEST_CASE("Aggregator: stale section surfaces as Stale; never-observed stays Unknown", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    SECTION("A stale but otherwise-ok section raises overall to Stale") {
+        ResourcesStatus resources;
+        resources.memory.mem_total_mb = 1000;
+        resources.memory.mem_used_mb = 100; // healthy
+        resources.freshness.stale = true;   // data past its freshness window
+        auto state = agg.aggregate({}, {}, {}, resources, {}, {}, {}, {});
+        CHECK(state.summary.domains.resources == Severity::Stale);
+        CHECK(state.summary.severity == Severity::Stale);
+    }
+
+    SECTION("A stale section retains a worse last-known severity (no downgrade)") {
+        ResourcesStatus resources;
+        resources.memory.mem_total_mb = 1000;
+        resources.memory.mem_used_mb = 990; // crit
+        resources.freshness.stale = true;
+        auto state = agg.aggregate({}, {}, {}, resources, {}, {}, {}, {});
+        CHECK(state.summary.domains.resources == Severity::Crit); // crit > stale
+    }
+
+    SECTION("Never-observed sections (not stale) keep overall from alarming (warm-up)") {
+        // All sections default: overall Unknown, freshness.stale=false.
+        auto state = agg.aggregate({}, {}, {}, {}, {}, {}, {}, {});
+        CHECK(state.summary.severity != Severity::Warn);
+        CHECK(state.summary.severity != Severity::Crit);
+        CHECK(state.summary.severity != Severity::Stale);
+    }
+}
+
 TEST_CASE("Aggregator computes overall severity", "[aggregator]") {
     auto config = Config::defaults();
     SnapshotAggregator agg(config);

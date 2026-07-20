@@ -42,6 +42,19 @@ SnapshotState SnapshotAggregator::aggregate(
     auto journal_sev = evaluate_journal(journal);
     auto crash_sev = evaluate_crash(crash);
 
+    // A stale section (collected before, now past its freshness window) is raised
+    // to at least Severity::Stale so loss of freshness surfaces in the roll-up.
+    // worst_of preserves a retained warn/crit when the last-known value was worse,
+    // and a never-observed section is not marked stale (stays unknown → warm-up
+    // safe).
+    if (boot.freshness.stale)      boot_sev      = worst_of({boot_sev, Severity::Stale});
+    if (services.freshness.stale)  services_sev  = worst_of({services_sev, Severity::Stale});
+    if (resources.freshness.stale) resources_sev = worst_of({resources_sev, Severity::Stale});
+    if (time_sync.freshness.stale) time_sync_sev = worst_of({time_sync_sev, Severity::Stale});
+    if (update.freshness.stale)    update_sev    = worst_of({update_sev, Severity::Stale});
+    if (journal.freshness.stale)   journal_sev   = worst_of({journal_sev, Severity::Stale});
+    if (crash.freshness.stale)     crash_sev     = worst_of({crash_sev, Severity::Stale});
+
     // Expose per-domain severity so the roll-up can't mask a single degraded
     // (or blind) domain.
     state.summary.domains = DomainSeverities{
