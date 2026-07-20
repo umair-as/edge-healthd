@@ -25,6 +25,12 @@
   cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DEDGE_FETCH_SDBUSCPP=ON
   cmake --build build -j "$(nproc)"
   ```
+- Exploit-mitigation hardening is on by default (`EDGE_ENABLE_HARDENING=ON`:
+  RELRO + BIND_NOW, PIE, stack-protector, stack-clash protection, aarch64
+  BTI + PAC; FORTIFY additionally in optimizing builds). It is skipped only when
+  sanitizers are **active** — i.e. Debug **and** `EDGE_ENABLE_SANITIZERS=ON` —
+  since ASan/UBSan are incompatible with FORTIFY / stack-protection. Enabling the
+  sanitizer option on a non-Debug build does not disable hardening (it just warns).
 - Snapshot schema check:
   ```bash
   python3 scripts/validate_schema.py /run/health/state.json
@@ -51,6 +57,12 @@
   cmake --build build --target edge-dbus-generate
   ```
 - Commit `inc/generated/HealthManagerAdaptor.hpp` with XML changes.
+- The Manager exposes `OverallSeverity`, `TriggerSnapshot`, `GetRecentLogs`, and
+  `AcknowledgeCrash`. Access is gated by `config/edge-healthd-dbus.conf`: root and
+  the `edge-health-ops` group may call the management methods; the default context
+  is limited to reading `OverallSeverity` / introspection (bus default-deny). A
+  deployment that wants non-root operator access must provision the
+  `edge-health-ops` group; keep the policy in sync when adding methods.
 
 ## Testing Expectations
 - Update/add tests in `tests/test_<module>.cpp` for behavior changes.
@@ -66,7 +78,7 @@
   - `docs/edge.health.state.v1.1.md` (current contract) and `schemas/` for schema updates.
 
 ## Commit and PR Hygiene
-- Conventional Commits only: `feat|fix|refactor|build|docs|test|chore|perf(scope): message`.
+- Conventional Commits only: `feat|fix|refactor|build|docs|test|chore|perf|security|ci(scope): message`.
 - Keep PR scope focused and include test evidence.
 - Do not revert unrelated local changes.
 

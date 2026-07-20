@@ -23,6 +23,7 @@ edge-healthd is a lightweight health monitoring daemon for resource-constrained 
 - Prefer referencing `AGENTS.md` instead of copying command blocks into responses or commits.
 - If you add new repo rules, update `AGENTS.md` first, then keep `CLAUDE.md` as a thin pointer.
 - Use `/run/health/state.json` for snapshot validation examples (not `/data/...`).
+- Current snapshot contract is **v1.1** (`schemas/edge.health.state.v1.1.json`, interpreted in `docs/edge.health.state.v1.1.md`): severity enum includes `unavailable`/`stale`, plus per-section freshness, `summary.domains`, and storage/thermal `available`. Release builds ship hardened by default (see `AGENTS.md` → Build and Validate).
 
 ## Yocto SDK Cross-Compilation (Raspberry Pi 5)
 
