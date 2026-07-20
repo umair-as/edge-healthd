@@ -45,3 +45,6 @@ benchmark/
 
 # Codex agent artifacts (not committed)
 .codex
+
+# Local scratch / agent working notes (not committed)
+scratch/
