@@ -48,7 +48,15 @@ snap()    { jq -r "$1" "$SNAPSHOT" 2>/dev/null; }
 snap_int(){ jq    "$1" "$SNAPSHOT" 2>/dev/null; }
 
 trigger_and_wait() {
-    busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" TriggerSnapshot &>/dev/null || true
+    # TriggerSnapshot is rate-limited (trigger_min_interval_sec, default 5s). If a
+    # prior section triggered recently this call returns "b false" and no cycle
+    # runs, so retry with spacing past the rate-limit window until it takes.
+    local i r
+    for i in 1 2 3 4; do
+        r=$(busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" TriggerSnapshot 2>/dev/null || echo)
+        [[ "$r" =~ "b true" ]] && { sleep 3; return 0; }
+        sleep 6
+    done
     sleep 3
 }
 
