@@ -22,6 +22,11 @@ SyslogIdentifier=edge-healthd
 # User/group
 User=edgehealth
 Group=edgehealth
+# JournalProbe reads the system-wide journal (priority <= err). Without this the
+# unprivileged daemon only sees its own messages, so journal.error_count is
+# always 0 (the probe is blind, not the system clean). systemd skips this line
+# with a warning if the group is absent.
+SupplementaryGroups=systemd-journal
 
 # Capabilities (needed for NETLINK_ROUTE socket)
 CapabilityBoundingSet=CAP_NET_RAW
