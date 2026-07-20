@@ -28,9 +28,11 @@ Group=edgehealth
 # with a warning if the group is absent.
 SupplementaryGroups=systemd-journal
 
-# Capabilities (needed for NETLINK_ROUTE socket)
-CapabilityBoundingSet=CAP_NET_RAW
-AmbientCapabilities=CAP_NET_RAW
+# Capabilities: none required. rtnetlink monitoring (RTMGRP_LINK/IPV4_IFADDR)
+# and the ethtool generic-netlink query are unprivileged reads — CAP_NET_RAW
+# governs AF_PACKET/SOCK_RAW, which the daemon never uses. Drop the whole
+# bounding set so the process can hold no capability.
+CapabilityBoundingSet=
 NoNewPrivileges=yes
 
 # Filesystem protection
@@ -69,6 +71,9 @@ UMask=0027
 SystemCallFilter=@system-service @network-io @timer
 SystemCallFilter=~@privileged @resources @mount @swap @reboot @raw-io @obsolete @cpu-emulation @debug @keyring @module @clock
 SystemCallErrorNumber=EPERM
+# Block syscalls issued through a non-native ABI (e.g. i386 on x86-64), a common
+# seccomp-bypass avenue.
+SystemCallArchitectures=native
 
 # Resource limits
 MemoryMax=64M

@@ -58,11 +58,22 @@ set(EDGE_WARNINGS
 # Sanitizers (Debug builds)
 # -----------------------------------------------------------------------------
 
+# EDGE_SANITIZERS_ACTIVE reflects whether sanitizers are ACTUALLY applied to this
+# build, not merely requested: the flags land only on Debug (the SANITIZER_FLAGS
+# go into CMAKE_*_FLAGS_DEBUG). Hardening below keys off this, so a Release build
+# with EDGE_ENABLE_SANITIZERS=ON — e.g. from a reused cache — still gets hardened
+# instead of silently receiving neither sanitizers nor mitigations.
+set(EDGE_SANITIZERS_ACTIVE OFF)
 if(EDGE_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(EDGE_SANITIZERS_ACTIVE ON)
     set(SANITIZER_FLAGS "-fsanitize=address,undefined -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SANITIZER_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${SANITIZER_FLAGS}")
     message(STATUS "Sanitizers enabled: ASan + UBSan")
+elseif(EDGE_ENABLE_SANITIZERS)
+    message(WARNING
+        "EDGE_ENABLE_SANITIZERS=ON but CMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}' "
+        "(not Debug) — sanitizers are NOT applied this build; hardening stays on.")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -79,6 +90,42 @@ if(EDGE_ENABLE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # -----------------------------------------------------------------------------
+# Exploit-mitigation hardening
+#
+# A daemon that parses netlink, journald, D-Bus and /proc,/sys text should ship
+# hardened regardless of the distro. A Yocto build injects most of these via its
+# security flags; applying them here too makes native/upstream builds hardened
+# and is idempotent (FORTIFY is undef'd first to avoid a redefinition warning).
+# Disabled only when sanitizers are actually active (Debug + EDGE_ENABLE_SANITIZERS),
+# since ASan/UBSan are incompatible with FORTIFY / stack-protection instrumentation;
+# a Release build that merely has the sanitizer option set stays hardened.
+# -----------------------------------------------------------------------------
+
+option(EDGE_ENABLE_HARDENING "Enable exploit-mitigation build flags" ON)
+set(EDGE_HARDENING_COMPILE "")
+set(EDGE_HARDENING_LINK "")
+
+if(EDGE_ENABLE_HARDENING AND NOT EDGE_SANITIZERS_ACTIVE)
+    include(CheckCXXCompilerFlag)
+    list(APPEND EDGE_HARDENING_COMPILE -fstack-protector-strong -D_GLIBCXX_ASSERTIONS -fPIE)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # _FORTIFY_SOURCE needs an optimizing build (>= -O1).
+        list(APPEND EDGE_HARDENING_COMPILE -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2)
+    endif()
+    check_cxx_compiler_flag("-fstack-clash-protection" EDGE_HAS_STACK_CLASH)
+    if(EDGE_HAS_STACK_CLASH)
+        list(APPEND EDGE_HARDENING_COMPILE -fstack-clash-protection)
+    endif()
+    # aarch64 pointer-authentication + BTI (skipped where unsupported, e.g. x86).
+    check_cxx_compiler_flag("-mbranch-protection=standard" EDGE_HAS_BRANCH_PROT)
+    if(EDGE_HAS_BRANCH_PROT)
+        list(APPEND EDGE_HARDENING_COMPILE -mbranch-protection=standard)
+    endif()
+    list(APPEND EDGE_HARDENING_LINK -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack)
+    message(STATUS "Hardening flags enabled")
+endif()
+
+# -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
 
@@ -90,8 +137,11 @@ if(NOT nlohmann_json_FOUND)
     FetchContent_Declare(
         nlohmann_json
         GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.11.3
-        GIT_SHALLOW TRUE
+        # Pinned to the commit SHA of v3.11.3 so a re-pointed tag can't change
+        # the fetched source. GIT_SHALLOW is off because a shallow clone of an
+        # arbitrary (non-tip) commit is not reliably supported.
+        GIT_TAG 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03 # v3.11.3
+        GIT_SHALLOW FALSE
     )
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
@@ -130,8 +180,9 @@ elseif(EDGE_FETCH_SDBUSCPP)
     FetchContent_Declare(
         sdbus_cpp
         GIT_REPOSITORY https://github.com/Kistler-Group/sdbus-cpp.git
-        GIT_TAG v2.0.0
-        GIT_SHALLOW TRUE
+        # Pinned to the commit SHA of v2.0.0 (supply-chain: mutable tags can move).
+        GIT_TAG b7d85f936d622299ee57966c2b2aefde5e4f3684 # v2.0.0
+        GIT_SHALLOW FALSE
     )
     FetchContent_MakeAvailable(sdbus_cpp)
 
@@ -176,7 +227,7 @@ target_include_directories(edge-snapshot-core
         $<INSTALL_INTERFACE:inc>
 )
 
-target_compile_options(edge-snapshot-core PRIVATE ${EDGE_WARNINGS})
+target_compile_options(edge-snapshot-core PRIVATE ${EDGE_WARNINGS} ${EDGE_HARDENING_COMPILE})
 
 target_link_libraries(edge-snapshot-core
     PUBLIC
@@ -207,7 +258,8 @@ add_executable(edge-healthd
     src/daemon.cpp
 )
 
-target_compile_options(edge-healthd PRIVATE ${EDGE_WARNINGS})
+target_compile_options(edge-healthd PRIVATE ${EDGE_WARNINGS} ${EDGE_HARDENING_COMPILE})
+target_link_options(edge-healthd PRIVATE ${EDGE_HARDENING_LINK})
 
 target_link_libraries(edge-healthd PRIVATE edge-snapshot-core)
 
@@ -234,8 +286,9 @@ if(EDGE_BUILD_TESTS)
         FetchContent_Declare(
             Catch2
             GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-            GIT_TAG v3.5.2
-            GIT_SHALLOW TRUE
+            # Pinned to the commit SHA of v3.5.2 (supply-chain: mutable tags can move).
+            GIT_TAG 05e10dfccc28c7f973727c54f850237d07d5e10f # v3.5.2
+            GIT_SHALLOW FALSE
         )
         FetchContent_MakeAvailable(Catch2)
     endif()
