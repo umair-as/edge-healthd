@@ -150,10 +150,18 @@ private:
     // consumers can route on it independently of overall severity.
     std::optional<std::string> last_alarmed_crash_fp_;
 
+    // Current kernel-panic fingerprint (nullopt when no panic artifacts are
+    // present). Updated every collection_cycle() and read by the AcknowledgeCrash
+    // D-Bus callback, which may run on the sdbus event-loop thread — guard with
+    // its own mutex so the ack path never blocks on state_mutex_.
+    std::mutex                 crash_fp_mutex_;
+    std::optional<std::string> current_panic_fingerprint_;
+
     // eventfd used to interrupt the collection wait on demand. Written by the
     // async-signal-safe SIGTERM/SIGINT handler and by the D-Bus TriggerSnapshot
-    // / RAUC callbacks, so a shutdown or trigger breaks poll() within ~1s
-    // instead of waiting out collect_interval. -1 if eventfd creation failed.
+    // / RAUC / AcknowledgeCrash callbacks, so a shutdown or trigger breaks poll()
+    // within ~1s instead of waiting out collect_interval. -1 if eventfd creation
+    // failed.
     int wakeup_fd_{-1};
     // Guards last_trigger_time_ for the TriggerSnapshot rate-limit check.
     std::mutex              cv_mutex_;

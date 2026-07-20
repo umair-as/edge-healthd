@@ -289,6 +289,9 @@ void to_json(nlohmann::json& j, const CrashArtifact& artifact) {
         {"size_bytes", artifact.size_bytes}
     };
 
+    if (!artifact.kind.empty()) {
+        j["kind"] = artifact.kind;
+    }
     if (artifact.mtime) {
         j["mtime"] = format_time(*artifact.mtime);
     }

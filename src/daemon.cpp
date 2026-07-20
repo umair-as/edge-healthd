@@ -2,6 +2,7 @@
 // edge-healthd: Daemon implementation
 
 #include "daemon.hpp"
+#include "atomic_file.hpp"
 #include "netlink_monitor.hpp"
 #include "version.hpp"
 
@@ -18,6 +19,7 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include <nlohmann/json.hpp>
 #include <sdbus-c++/sdbus-c++.h>
 
 #ifdef EDGE_HAS_SYSTEMD
@@ -169,6 +171,35 @@ std::optional<std::string> SnapshotDaemon::initialize() {
                     last_trigger_time_ = now;
                     trigger_requested_.store(true);
                 }
+                wake();
+                return true;
+            },
+            // AcknowledgeCrash: record the ack only if the caller's fingerprint
+            // matches the daemon's current panic fingerprint. CrashProbe stays
+            // read-only; this is the sole writer of crash_state.json. Written
+            // atomically so a power cut can't leave a half-written ack.
+            [this](const std::string& fingerprint) -> bool {
+                {
+                    std::lock_guard lock(crash_fp_mutex_);
+                    if (!current_panic_fingerprint_ ||
+                        *current_panic_fingerprint_ != fingerprint) {
+                        return false;
+                    }
+                }
+                const auto state_path = config_.state_dir / "crash_state.json";
+                nlohmann::json j;
+                j["acknowledged_fingerprint"] = fingerprint;
+                auto res = atomic_write_file(state_path, j.dump(2));
+                if (!res) {
+                    log::probe_error("crash",
+                        "failed to persist crash acknowledgement: " +
+                        res.error().what());
+                    return false;
+                }
+                // Wake a cycle so the acknowledged state is reflected promptly
+                // (severity drops, alarm latch clears) without waiting for the
+                // regular crash poll interval.
+                trigger_requested_.store(true);
                 wake();
                 return true;
             });
@@ -409,25 +440,41 @@ void SnapshotDaemon::collection_cycle() {
     }
     const Severity new_sev = last_severity_;
 
+    // Publish the current panic fingerprint for the AcknowledgeCrash callback.
+    // nullopt when there are no kernel-fault dumps, so an ack against a drained
+    // pstore is rejected.
+    {
+        std::lock_guard lock(crash_fp_mutex_);
+        current_panic_fingerprint_ =
+            (current_state_.crash.panic_count > 0) ? current_state_.crash.fingerprint
+                                                   : std::nullopt;
+    }
+
     // Push severity and cached logs to D-Bus manager.
     if (health_manager_) {
         health_manager_->update_severity(new_sev, prev_sev);
         health_manager_->update_recent_logs(current_state_.journal.recent_errors);
 
-        // Distinguishable crash alarm: fire when an unacknowledged crash with a
-        // new fingerprint appears. Reset the latch when the artifact set is
-        // cleared (pstore drained externally) so a future crash re-alarms.
+        // Distinguishable crash alarm: fire only for a NEW unacknowledged
+        // CURRENT-BOOT kernel panic (the crit-driving case). Prior-boot or
+        // acknowledged panics don't alarm. Clear/re-arm the latch when the panic
+        // is acknowledged, ages out to prior-boot only, or pstore is drained, so
+        // a genuinely new fresh panic re-alarms.
         const auto& crash = current_state_.crash;
-        if (crash.present && !crash.acknowledged && crash.fingerprint) {
+        const bool active_panic = crash.panic_count > 0 &&
+                                  !crash.acknowledged &&
+                                  crash.panic_current_boot &&
+                                  crash.fingerprint.has_value();
+        if (active_panic) {
             if (last_alarmed_crash_fp_ != crash.fingerprint) {
-                std::string msg = "kernel panic detected: " +
-                                  std::to_string(crash.artifact_count) +
-                                  " pstore artifact(s), fingerprint=" +
+                std::string msg = "kernel panic detected this boot: " +
+                                  std::to_string(crash.panic_count) +
+                                  " panic artifact(s), fingerprint=" +
                                   *crash.fingerprint;
                 health_manager_->emit_alarm("crash", msg, Severity::Crit);
                 last_alarmed_crash_fp_ = crash.fingerprint;
             }
-        } else if (!crash.present) {
+        } else {
             last_alarmed_crash_fp_.reset();
         }
     }

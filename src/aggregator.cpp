@@ -112,10 +112,18 @@ Severity SnapshotAggregator::evaluate_journal(const JournalStatus& journal) cons
 }
 
 Severity SnapshotAggregator::evaluate_crash(const CrashStatus& crash) const {
-    if (!crash.present) {
+    // Boot-aged, ack-aware severity keyed off kernel-fault dumps only.
+    //   this-boot unacked panic  -> Crit   (active fault)
+    //   prior-boot unacked panic -> Warn   (historical)
+    //   acknowledged panic       -> Ok     (informational; still in snapshot)
+    //   no panic artifacts       -> Ok     (benign console/pmsg/ftrace ignored)
+    if (crash.panic_count == 0) {
         return Severity::Ok;
     }
-    return crash.acknowledged ? Severity::Warn : Severity::Crit;
+    if (crash.acknowledged) {
+        return Severity::Ok;
+    }
+    return crash.panic_current_boot ? Severity::Crit : Severity::Warn;
 }
 
 Severity SnapshotAggregator::compute_overall(
@@ -196,8 +204,15 @@ std::vector<std::string> SnapshotAggregator::generate_reasons(
         reasons.push_back("journal_errors");
     }
 
-    if (crash.present && !crash.acknowledged) {
+    // Only an unacknowledged current-boot kernel panic drives crit and warrants
+    // the actionable reason. Prior-boot or acknowledged panics are surfaced as a
+    // distinct informational reason so operators still see them without pinning
+    // overall crit. Any pstore record (incl. benign console logs) is noted, but
+    // never crit-driving on its own.
+    if (crash.panic_count > 0 && !crash.acknowledged && crash.panic_current_boot) {
         reasons.push_back("kernel_panic_detected");
+    } else if (crash.panic_count > 0) {
+        reasons.push_back("historical_crash_artifacts");
     }
     if (crash.present) {
         reasons.push_back("pstore_records_present");

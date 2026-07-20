@@ -269,16 +269,26 @@ struct CrashArtifact {
     std::string name;
     uint64_t size_bytes = 0;
     std::optional<std::chrono::system_clock::time_point> mtime;
+    // Classification by filename: "panic" for kernel-fault dumps (dmesg-*, EFI
+    // dump-*) or "informational" for benign records (console-ramoops-*, pmsg-*,
+    // ftrace-*, anything else). Only "panic" artifacts drive severity/alarm.
+    std::string kind;
 };
 
 struct CrashStatus {
-    bool present = false;
+    bool present = false;              // any pstore artifact exists (all kinds)
     std::optional<std::string> source; // "pstore"
     std::optional<std::chrono::system_clock::time_point> last_panic_at;
-    std::optional<std::string> fingerprint;
-    uint32_t artifact_count = 0;
+    std::optional<std::string> fingerprint; // computed over PANIC artifacts only
+    uint32_t artifact_count = 0;       // total artifacts (all kinds)
     std::vector<CrashArtifact> artifacts;
-    bool acknowledged = false;
+    bool acknowledged = false;         // stored fingerprint matches panic fingerprint
+    // Trustworthiness lifecycle (M1): severity keys off kernel-fault dumps only,
+    // aged by boot. panic_count counts "panic"-kind artifacts; panic_current_boot
+    // is true when at least one panic artifact was captured during the current
+    // boot (mtime >= boot wall-clock start).
+    uint32_t panic_count = 0;
+    bool panic_current_boot = false;
 };
 
 struct SnapshotSummary {

@@ -35,9 +35,11 @@ bool is_degradation(Severity prev_sev, Severity new_sev) {
 // -----------------------------------------------------------------------------
 
 HealthManager::HealthManager(sdbus::IConnection& connection,
-                             std::function<bool()> on_trigger)
+                             std::function<bool()> on_trigger,
+                             std::function<bool(const std::string&)> on_acknowledge)
     : AdaptorInterfaces(connection, kObjectPath)
     , on_trigger_(std::move(on_trigger))
+    , on_acknowledge_(std::move(on_acknowledge))
 {
     registerAdaptor();
     log::info("D-Bus manager registered at edge.health" +
@@ -124,6 +126,21 @@ std::vector<std::string> HealthManager::GetRecentLogs(uint32_t max_lines)
     }
     const auto count = std::min<size_t>(max_lines, logs_cache_.size());
     return {logs_cache_.begin(), logs_cache_.begin() + static_cast<ptrdiff_t>(count)};
+}
+
+bool HealthManager::AcknowledgeCrash(const std::string& fingerprint)
+{
+    if (!on_acknowledge_) {
+        return false;
+    }
+    const bool acked = on_acknowledge_(fingerprint);
+    if (acked) {
+        log::info("Crash acknowledged: fingerprint=" + fingerprint);
+    } else {
+        log::info("AcknowledgeCrash rejected (stale/unknown fingerprint): " +
+                  fingerprint);
+    }
+    return acked;
 }
 
 } // namespace edge

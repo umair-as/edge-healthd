@@ -35,8 +35,13 @@ public:
     /// @param connection  System bus connection that owns the "edge.health" name.
     /// @param on_trigger  Callback invoked by TriggerSnapshot() to wake the
     ///                    daemon's collection loop (must be thread-safe).
+    /// @param on_acknowledge  Callback invoked by AcknowledgeCrash() with the
+    ///                    caller-supplied fingerprint; returns true only if it
+    ///                    matches the daemon's current panic fingerprint and the
+    ///                    acknowledgement was persisted (must be thread-safe).
     HealthManager(sdbus::IConnection& connection,
-                  std::function<bool()> on_trigger);
+                  std::function<bool()> on_trigger,
+                  std::function<bool(const std::string&)> on_acknowledge = {});
 
     ~HealthManager();
 
@@ -69,8 +74,14 @@ private:
     /// cache — no sd_journal_open() call, zero additional syscalls.
     std::vector<std::string> GetRecentLogs(uint32_t max_lines) override;
 
+    /// Acknowledges the current kernel-panic fingerprint. Returns true only if
+    /// `fingerprint` matches the daemon's current panic fingerprint and the ack
+    /// was persisted; false otherwise (stale/unknown fingerprint, no callback).
+    bool AcknowledgeCrash(const std::string& fingerprint) override;
+
     // --- Internal state ---
     std::function<bool()>    on_trigger_;
+    std::function<bool(const std::string&)> on_acknowledge_;
     mutable std::mutex       mutex_;
     std::string              severity_str_{"unknown"};
     Severity                 last_sev_{Severity::Unknown};
