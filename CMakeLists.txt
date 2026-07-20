@@ -58,11 +58,22 @@ set(EDGE_WARNINGS
 # Sanitizers (Debug builds)
 # -----------------------------------------------------------------------------
 
+# EDGE_SANITIZERS_ACTIVE reflects whether sanitizers are ACTUALLY applied to this
+# build, not merely requested: the flags land only on Debug (the SANITIZER_FLAGS
+# go into CMAKE_*_FLAGS_DEBUG). Hardening below keys off this, so a Release build
+# with EDGE_ENABLE_SANITIZERS=ON — e.g. from a reused cache — still gets hardened
+# instead of silently receiving neither sanitizers nor mitigations.
+set(EDGE_SANITIZERS_ACTIVE OFF)
 if(EDGE_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(EDGE_SANITIZERS_ACTIVE ON)
     set(SANITIZER_FLAGS "-fsanitize=address,undefined -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${SANITIZER_FLAGS}")
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${SANITIZER_FLAGS}")
     message(STATUS "Sanitizers enabled: ASan + UBSan")
+elseif(EDGE_ENABLE_SANITIZERS)
+    message(WARNING
+        "EDGE_ENABLE_SANITIZERS=ON but CMAKE_BUILD_TYPE='${CMAKE_BUILD_TYPE}' "
+        "(not Debug) — sanitizers are NOT applied this build; hardening stays on.")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -85,15 +96,16 @@ endif()
 # hardened regardless of the distro. A Yocto build injects most of these via its
 # security flags; applying them here too makes native/upstream builds hardened
 # and is idempotent (FORTIFY is undef'd first to avoid a redefinition warning).
-# Disabled automatically under sanitizers, which are incompatible with FORTIFY /
-# stack-protection instrumentation.
+# Disabled only when sanitizers are actually active (Debug + EDGE_ENABLE_SANITIZERS),
+# since ASan/UBSan are incompatible with FORTIFY / stack-protection instrumentation;
+# a Release build that merely has the sanitizer option set stays hardened.
 # -----------------------------------------------------------------------------
 
 option(EDGE_ENABLE_HARDENING "Enable exploit-mitigation build flags" ON)
 set(EDGE_HARDENING_COMPILE "")
 set(EDGE_HARDENING_LINK "")
 
-if(EDGE_ENABLE_HARDENING AND NOT EDGE_ENABLE_SANITIZERS)
+if(EDGE_ENABLE_HARDENING AND NOT EDGE_SANITIZERS_ACTIVE)
     include(CheckCXXCompilerFlag)
     list(APPEND EDGE_HARDENING_COMPILE -fstack-protector-strong -D_GLIBCXX_ASSERTIONS -fPIE)
     if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
