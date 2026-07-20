@@ -1,0 +1,76 @@
+name: CodeQL
+
+# Static analysis (SAST) of first-party source — free for public repositories.
+# Covers BOTH the C++ daemon (src/, inc/) and the Go web UI (web/server/), which
+# no dependency scanner sees. Both use manual build-mode because the layout is
+# non-standard: the C++ build needs specific CMake flags + apt deps, and the Go
+# module lives in a subdirectory (web/server), not the repo root.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 5 * * 1'
+
+permissions:
+  contents: read
+  security-events: write   # required to upload results to the Security tab
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+          - language: go
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install C/C++ build deps
+        if: matrix.language == 'c-cpp'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libsystemd-dev libmnl-dev
+
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache-dependency-path: web/server/go.sum
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: manual
+
+      # Build must run between init and analyze so CodeQL can trace compilation.
+      - name: Build C++ daemon
+        if: matrix.language == 'c-cpp'
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEDGE_BUILD_TESTS=OFF \
+            -DEDGE_FETCH_SDBUSCPP=ON
+          cmake --build build -j "$(nproc)"
+
+      - name: Build Go web server
+        if: matrix.language == 'go'
+        working-directory: web/server
+        run: go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
