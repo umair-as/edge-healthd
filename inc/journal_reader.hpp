@@ -88,6 +88,11 @@ private:
 
     // Buffer count cap (config override or 1000).
     [[nodiscard]] size_t max_entries_() const;
+    // Open the journal (system, then local-only fallback), establish follow
+    // state, and prime the buffer from the tail. Sets journal_ on success.
+    bool open_and_prime();
+    // Close the handle and mark the reader degraded (journal_ == nullptr).
+    void close_handle();
     // Read the entry at the current journal cursor into `out`. Returns false on
     // a read error.
     bool read_current(JournalEntry& out) const;

@@ -89,10 +89,11 @@ std::vector<std::string> recent_errors(const Config& cfg,
 std::vector<std::string> excerpt_for_unit(const Config& cfg,
                                           const std::deque<JournalEntry>& buffer,
                                           const std::string& unit) {
-    // Newest-first entries for this unit (all priorities), best-effort.
+    // Newest-first entries for this unit (all priorities), best-effort. Match
+    // _SYSTEMD_UNIT / UNIT / SYSLOG_IDENTIFIER, mirroring journalctl -u.
     std::vector<JournalEntry> lines;
     for (auto it = buffer.rbegin(); it != buffer.rend(); ++it) {
-        if (it->unit == unit) lines.push_back(*it);
+        if (it->matches_unit(unit)) lines.push_back(*it);
     }
     return filter_journal_entries(cfg, lines);
 }
@@ -115,6 +116,21 @@ size_t JournalReader::max_entries_() const {
 #ifdef EDGE_HAS_SYSTEMD
 
 bool JournalReader::read_current(JournalEntry& out) const {
+    // Return the value of journal field `name` (text after the "name=" prefix),
+    // or empty if the field is absent on this entry.
+    const auto read_field = [this](const char* name) -> std::string {
+        const void* d = nullptr;
+        size_t l = 0;
+        if (sd_journal_get_data(journal_, name, &d, &l) < 0 || !d) return {};
+        const char* p = static_cast<const char*>(d);
+        const size_t pre = std::strlen(name) + 1; // "name="
+        if (l > pre && std::strncmp(p, name, pre - 1) == 0 && p[pre - 1] == '=') {
+            p += pre;
+            l -= pre;
+        }
+        return std::string(p, l);
+    };
+
     uint64_t usec = 0;
     if (sd_journal_get_realtime_usec(journal_, &usec) < 0) usec = 0;
     out.realtime_usec = usec;
@@ -137,14 +153,11 @@ bool JournalReader::read_current(JournalEntry& out) const {
             std::string_view(p, std::min(len, static_cast<size_t>(1024))));
     }
 
-    out.unit.clear();
-    data = nullptr; len = 0;
-    if (sd_journal_get_data(journal_, "_SYSTEMD_UNIT", &data, &len) >= 0 && data) {
-        const char* p = static_cast<const char*>(data);
-        constexpr size_t pre = sizeof("_SYSTEMD_UNIT=") - 1;
-        if (len > pre && std::strncmp(p, "_SYSTEMD_UNIT=", pre) == 0) { p += pre; len -= pre; }
-        out.unit.assign(p, len);
-    }
+    // Capture every unit-association field journalctl -u matches on, so per-unit
+    // excerpts don't lose entries that only carry UNIT= or SYSLOG_IDENTIFIER=.
+    out.unit = read_field("_SYSTEMD_UNIT");
+    out.unit_hint = read_field("UNIT");
+    out.syslog_id = read_field("SYSLOG_IDENTIFIER");
     return true;
 }
 
@@ -156,23 +169,29 @@ void JournalReader::rebuild_from_tail() {
     buffer_.clear();
     if (sd_journal_seek_tail(journal_) < 0) return;
 
-    // Step back up to N entries, then read FORWARD to the end. Reaching the tail
-    // via sd_journal_next() (until it returns 0) leaves the journal in the
-    // correct follow state so subsequent ingest() picks up appends; anchoring
-    // with seek_tail/previous instead leaves next() unable to follow.
+    // Step back up to N entries so the cursor lands ON the first entry we want,
+    // then read FORWARD to EOF. previous_skip() lands on an entry rather than
+    // past it, so the current entry must be read BEFORE the first next() advance
+    // or it is dropped — otherwise a cap of N loads only N-1, and a one-entry
+    // journal loads none. Reading forward until next() returns 0 also leaves the
+    // journal in the correct follow state so subsequent ingest() picks up
+    // appends; anchoring with seek_tail/previous instead leaves next() unable to
+    // follow.
     const size_t cap = max_entries_();
-    sd_journal_previous_skip(journal_, cap);
+    const int moved = sd_journal_previous_skip(journal_, cap);
 
     const auto deadline = std::chrono::steady_clock::now() + config_.journal_scan_timeout;
-    while (sd_journal_next(journal_) > 0) {
+    bool have_entry = moved > 0; // cursor is on a valid entry when we stepped back >= 1
+    while (have_entry) {
         if (std::chrono::steady_clock::now() >= deadline) break;
         JournalEntry e;
         if (read_current(e)) buffer_.push_back(std::move(e)); // chronological
         if (buffer_.size() > cap) buffer_.pop_front();
+        have_entry = sd_journal_next(journal_) > 0;
     }
 }
 
-bool JournalReader::init() {
+bool JournalReader::open_and_prime() {
     int ret = sd_journal_open(&journal_, SD_JOURNAL_SYSTEM | SD_JOURNAL_CURRENT_USER);
     if (ret < 0 || !journal_) {
         ret = sd_journal_open(&journal_, SD_JOURNAL_LOCAL_ONLY);
@@ -189,18 +208,40 @@ bool JournalReader::init() {
     return true;
 }
 
+void JournalReader::close_handle() {
+    if (journal_) sd_journal_close(journal_);
+    journal_ = nullptr;
+}
+
+bool JournalReader::init() { return open_and_prime(); }
+
 void JournalReader::ingest() {
-    if (!journal_) return;
+    if (!journal_) {
+        // Degraded — journald may have come up since a failed init(), or a prior
+        // API error closed the handle. Retry the open only while degraded; this
+        // matches the old per-cycle-open fallback cost, and the healthy path
+        // below never re-opens. open_and_prime() refills the buffer, so queries
+        // this same cycle already see current data.
+        (void)open_and_prime();
+        return;
+    }
     // Non-blocking wait: sets up the inotify watches on first call and processes
     // pending append/rotate events so sd_journal_next() below sees new entries.
     // (A bare sd_journal_process() does nothing until sd_journal_get_fd()/wait()
     // has established the watches — a common sd_journal follow pitfall.)
-    sd_journal_wait(journal_, 0);
+    if (sd_journal_wait(journal_, 0) < 0) {
+        // A persistent journal error (e.g. journald restarted out from under us).
+        // Drop the handle; the degraded branch above re-opens next cycle.
+        close_handle();
+        return;
+    }
 
     const size_t budget = 2 * max_entries_();
     size_t read = 0;
     while (read < budget) {
-        if (sd_journal_next(journal_) <= 0) break;
+        const int r = sd_journal_next(journal_);
+        if (r < 0) { close_handle(); return; } // recover on the next cycle
+        if (r == 0) break;
         JournalEntry e;
         if (read_current(e)) buffer_.push_back(std::move(e));
         ++read;

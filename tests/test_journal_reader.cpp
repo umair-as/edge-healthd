@@ -91,6 +91,30 @@ TEST_CASE("JournalReader: excerpt_for_unit filters by unit, all priorities", "[j
     CHECK(excerpt_for_unit(cfg, b, "missing.service").empty()); // aged-out/unknown -> empty
 }
 
+TEST_CASE("JournalReader: excerpt_for_unit matches UNIT and SYSLOG_IDENTIFIER too",
+          "[journal_reader]") {
+    Config cfg = Config::defaults();
+    const uint64_t t = now_usec();
+    // journalctl -u <unit> matches _SYSTEMD_UNIT, UNIT, or SYSLOG_IDENTIFIER; the
+    // reader must not lose entries that carry only one of the alternates.
+    std::deque<JournalEntry> b;
+    JournalEntry byUnit{t - 3'000'000, 6, "emitted-by-unit", "foo.service", "", ""};
+    JournalEntry byHint{t - 2'000'000, 6, "systemd-about-unit", "", "foo.service", ""};
+    JournalEntry byIdent{t - 1'000'000, 6, "by-syslog-id", "", "", "foo.service"};
+    JournalEntry other{t, 6, "unrelated", "bar.service", "", ""};
+    b.push_back(byUnit);
+    b.push_back(byHint);
+    b.push_back(byIdent);
+    b.push_back(other);
+
+    auto lines = excerpt_for_unit(cfg, b, "foo.service");
+    REQUIRE(lines.size() == 3);
+    CHECK(lines[0] == "by-syslog-id");      // newest-first
+    CHECK(lines[1] == "systemd-about-unit");
+    CHECK(lines[2] == "emitted-by-unit");
+    CHECK(excerpt_for_unit(cfg, b, "bar.service").size() == 1);
+}
+
 TEST_CASE("JournalReader: recent_errors returns only error lines, newest-first", "[journal_reader]") {
     Config cfg = Config::defaults();
     std::deque<JournalEntry> b{

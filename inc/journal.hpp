@@ -21,7 +21,16 @@ struct JournalEntry {
     uint64_t realtime_usec = 0; // microseconds since epoch
     int priority = 6; // syslog priority: 0..7 (default info)
     std::string message;
-    std::string unit;   // _SYSTEMD_UNIT (empty if absent); used for per-unit excerpts
+    // Unit-association fields, captured so per-unit excerpts match the same way
+    // `journalctl -u <unit>` does — a message may carry any of these.
+    std::string unit;        // _SYSTEMD_UNIT (message emitted BY the unit's process)
+    std::string unit_hint;   // UNIT (systemd's own messages ABOUT the unit)
+    std::string syslog_id;   // SYSLOG_IDENTIFIER (program name)
+
+    // True when this entry belongs to `name` under journalctl -u semantics.
+    [[nodiscard]] bool matches_unit(std::string_view name) const {
+        return unit == name || unit_hint == name || syslog_id == name;
+    }
 };
 
 // Filter raw journal entries according to config: window_sec, min_priority, max_lines.

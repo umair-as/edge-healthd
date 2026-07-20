@@ -262,6 +262,12 @@ std::optional<std::string> Config::validate() const {
         return "log_excerpt.scan_timeout_ms must be at least 100";
     }
 
+    // 0 is accepted and means "use the built-in default (1000)"; guard only the
+    // upper bound so a typo can't pin megabytes of journal text in memory.
+    if (journal_buffer_max_entries > 100000) {
+        return "log_excerpt.buffer_max_entries must be at most 100000";
+    }
+
     if (thresholds.cpu_load_warn >= thresholds.cpu_load_crit) {
         return "cpu_load_warn must be less than cpu_load_crit";
     }
@@ -341,6 +347,7 @@ std::string Config::to_json_string(int indent) const {
     if (log_excerpt_min_priority) le["min_priority"] = *log_excerpt_min_priority;
     if (log_excerpt_window_sec) le["window_sec"] = *log_excerpt_window_sec;
     le["scan_timeout_ms"] = journal_scan_timeout.count();
+    le["buffer_max_entries"] = journal_buffer_max_entries;
 
     return json.dump(indent);
 }
