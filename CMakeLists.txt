@@ -160,6 +160,7 @@ add_library(edge-snapshot-core STATIC
     src/probes.cpp
     src/probes_dbus.cpp
     src/journal.cpp
+    src/journal_reader.cpp
     src/netlink_monitor.cpp
     src/ethtool_link.cpp
     src/aggregator.cpp
@@ -249,6 +250,7 @@ if(EDGE_BUILD_TESTS)
         tests/test_writer.cpp
         tests/test_json.cpp
         tests/test_journal.cpp
+        tests/test_journal_reader.cpp
         tests/test_ethtool_link.cpp
         tests/test_serialization_safety.cpp
         tests/test_daemon_lifecycle.cpp

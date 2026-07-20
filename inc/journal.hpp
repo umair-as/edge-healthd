@@ -21,6 +21,7 @@ struct JournalEntry {
     uint64_t realtime_usec = 0; // microseconds since epoch
     int priority = 6; // syslog priority: 0..7 (default info)
     std::string message;
+    std::string unit;   // _SYSTEMD_UNIT (empty if absent); used for per-unit excerpts
 };
 
 // Filter raw journal entries according to config: window_sec, min_priority, max_lines.

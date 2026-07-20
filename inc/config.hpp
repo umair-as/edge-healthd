@@ -133,10 +133,16 @@ struct Config {
     // If not set, include all available messages.
     std::optional<uint64_t> log_excerpt_window_sec;
 
-    // Wall-clock budget for the entire journal scan (open + seek + iterate).
-    // If exceeded the probe returns whatever entries were collected so far and
-    // logs a warning.  Protects the collection cycle against slow/large journals.
+    // Wall-clock budget for the journal reader's startup prime and per-cycle
+    // bounded catch-up. Protects the collection cycle against a slow/large
+    // journal on open or a huge backlog.
     std::chrono::milliseconds journal_scan_timeout{3000};
+
+    // Max entries held in the persistent JournalReader's in-memory ring buffer.
+    // Bounds memory and per-cycle catch-up work; the buffer is also age-bounded
+    // to at least max(log_excerpt_window_sec, 300s) so it always covers the
+    // reporting window.
+    uint32_t journal_buffer_max_entries = 1000;
 
     // ---------------------------------------------------------------------
     // Factory methods
