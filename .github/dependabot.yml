@@ -26,6 +26,13 @@ updates:
     commit-message:
       prefix: "chore(web/ui/deps)"
     labels: ["dependencies", "javascript"]
+    # The UI deliberately pins to Tailwind 3 / Vite 5 / TypeScript 5 / Preact 10.
+    # Major bumps here are a coordinated, separately-validated migration (e.g.
+    # Tailwind 3→4 breaks the build), not an automated update — so don't propose
+    # them. Minor/patch still flow through the grouped PRs below.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-dev:
         dependency-type: "development"

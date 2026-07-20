@@ -76,3 +76,30 @@ jobs:
             echo "validating $f"
             python3 scripts/validate_schema.py "$f"
           done
+
+  # Build the optional Preact/TypeScript web UI so dependency bumps to it get real
+  # signal. Without this, an npm PR that breaks `npm run build` (e.g. a Tailwind or
+  # Vite major) still passes CI, since build-and-validate only covers the C++ daemon.
+  web-ui-build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web/ui
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/ui/package-lock.json
+
+      - name: Install (clean, from lockfile)
+        run: npm ci
+
+      - name: Type-check and build
+        run: npm run build
+        # (The `lint` script is not wired yet — eslint is not a declared dependency —
+        # so it is intentionally not run here. Build is the signal for dep bumps.)
