@@ -26,6 +26,7 @@ class IConnection;
 namespace edge {
 
  class NetlinkMonitor; // forwared declaration
+class JournalReader;  // forward declaration (persistent journal buffer)
 // Forward declaration
 struct Config;
 
@@ -152,7 +153,8 @@ public:
     explicit ServicesProbe(
         const Config& config,
         sdbus::IConnection* dbus = nullptr,
-        std::span<const std::string> monitored_units = {}
+        std::span<const std::string> monitored_units = {},
+        const JournalReader* journal = nullptr
     );
 
     [[nodiscard]] ProbeResult<DataType> collect() const;
@@ -161,6 +163,7 @@ private:
     const Config& config_;
     sdbus::IConnection* dbus_;
     std::vector<std::string> monitored_units_;
+    const JournalReader* journal_;  // per-unit excerpts from the shared buffer
 
     [[nodiscard]] ServiceUnit query_unit(const std::string& unit_name,
                                          sdbus::IConnection& connection) const;
@@ -261,12 +264,13 @@ class JournalProbe {
 public:
     using DataType = JournalStatus;
 
-    explicit JournalProbe(const Config& config);
+    explicit JournalProbe(const Config& config, const JournalReader* journal = nullptr);
 
     [[nodiscard]] ProbeResult<JournalStatus> collect() const;
 
 private:
     const Config& config_;
+    const JournalReader* journal_;  // reads the shared persistent buffer
 };
 
 // -----------------------------------------------------------------------------

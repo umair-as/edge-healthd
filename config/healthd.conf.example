@@ -156,9 +156,14 @@
     // Rolling time window for log collection (seconds). 0 or unset = no limit.
     //"window_sec": 3600,
 
-    // Wall-clock budget for the entire journal scan (milliseconds).
-    //   Protects the collection cycle against slow or large journals.
-    //"scan_timeout_ms": 3000
+    // Wall-clock budget for the persistent reader's startup prime / catch-up
+    //   (milliseconds). Protects the cycle against a slow or very large journal.
+    //"scan_timeout_ms": 3000,
+
+    // Max entries held in the persistent journal reader's in-memory buffer.
+    //   Bounds memory and per-cycle catch-up; recent errors and per-unit
+    //   excerpts are derived from this buffer.
+    //"buffer_max_entries": 1000
   },
 
   // ── D-Bus settings ─────────────────────────────────────────────────────────

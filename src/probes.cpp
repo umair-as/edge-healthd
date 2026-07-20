@@ -6,6 +6,7 @@
 #include "config.hpp"
 #include "ethtool_link.hpp"
 #include "journal.hpp"
+#include "journal_reader.hpp"
 #include "log.hpp"
 #include "netlink_monitor.hpp"
 
@@ -833,119 +834,21 @@ std::optional<LastUpdate> UpdateProbe::load_last_update() const {
 // JournalProbe
 // -----------------------------------------------------------------------------
 
-JournalProbe::JournalProbe(const Config& config)
-    : config_(config) {}
+JournalProbe::JournalProbe(const Config& config, const JournalReader* journal)
+    : config_(config), journal_(journal) {}
 
 ProbeResult<JournalStatus> JournalProbe::collect() const {
-#ifdef EDGE_HAS_SYSTEMD
+    // Read the system-wide error picture from the shared persistent journal
+    // buffer — no sd_journal_open() per cycle. When the reader is degraded
+    // (journal unavailable / no systemd) this yields Ok/empty, as before.
     JournalStatus status;
     status.overall = Severity::Ok;
-
-    const int effective_priority = config_.log_excerpt_min_priority.value_or(3);
-    const auto deadline =
-        std::chrono::steady_clock::now() + config_.journal_scan_timeout;
-
-    sd_journal* journal = nullptr;
-    int ret = sd_journal_open(&journal, SD_JOURNAL_SYSTEM | SD_JOURNAL_CURRENT_USER);
-    if (ret < 0 || !journal) {
-        ret = sd_journal_open(&journal, SD_JOURNAL_LOCAL_ONLY);
-        if (ret < 0 || !journal) {
-            return status;
-        }
+    if (journal_) {
+        status.overall = journal_->overall_severity();
+        status.error_count = journal_->error_count();
+        status.recent_errors = journal_->recent_errors();
     }
-
-    struct JournalGuard {
-        sd_journal* j;
-        ~JournalGuard() { if (j) sd_journal_close(j); }
-    } guard{journal};
-
-    // Check budget after open — sd_journal_open() itself can block on large journals.
-    if (std::chrono::steady_clock::now() >= deadline) {
-        log::warn("journal scan skipped: sd_journal_open exceeded timeout ("
-                  + std::to_string(config_.journal_scan_timeout.count()) + " ms)");
-        return status;
-    }
-
-    ret = sd_journal_seek_tail(journal);
-    if (ret < 0) {
-        return status;
-    }
-
-    ret = sd_journal_previous(journal);
-    if (ret <= 0) {
-        return status;
-    }
-
-    const size_t max_scan = std::max<size_t>(
-        config_.log_excerpt_max_lines ? config_.log_excerpt_max_lines : 20, 200);
-
-    std::vector<JournalEntry> raw;
-    raw.reserve(64);
-
-    for (size_t i = 0; i < max_scan; ++i) {
-        // Enforce deadline on every iteration — sd_journal_previous() cost is
-        // proportional to the number of rotated journal files on disk.
-        if (std::chrono::steady_clock::now() >= deadline) {
-            log::warn("journal scan timeout after " + std::to_string(i)
-                      + " entries (budget: "
-                      + std::to_string(config_.journal_scan_timeout.count()) + " ms)");
-            break;
-        }
-
-        // Read priority
-        int pri = 6;
-        const void* pdata = nullptr;
-        size_t plen = 0;
-        if (sd_journal_get_data(journal, "PRIORITY", &pdata, &plen) >= 0 && pdata) {
-            const char* pstr = static_cast<const char*>(pdata);
-            if (plen > 9 && std::strncmp(pstr, "PRIORITY=", 9) == 0) pstr += 9;
-            pri = std::atoi(pstr);
-        }
-
-        if (pri <= effective_priority) {
-            uint64_t usec = 0;
-            sd_journal_get_realtime_usec(journal, &usec);
-
-            const void* data = nullptr;
-            size_t length = 0;
-            std::string msg;
-            if (sd_journal_get_data(journal, "MESSAGE", &data, &length) >= 0 && data) {
-                const char* ptr = static_cast<const char*>(data);
-                if (length > 8 && std::strncmp(ptr, "MESSAGE=", 8) == 0) {
-                    ptr += 8;
-                    length -= 8;
-                }
-                // MESSAGE is arbitrary bytes; scrub invalid UTF-8 so it can never
-                // make the snapshot serializer throw (defense in depth).
-                msg = sanitize_utf8(std::string_view(ptr, std::min(length, static_cast<size_t>(1024))));
-            }
-            raw.push_back(JournalEntry{usec, pri, std::move(msg)});
-        }
-
-        ret = sd_journal_previous(journal);
-        if (ret <= 0) break;
-    }
-
-    status.error_count = static_cast<uint32_t>(raw.size());
-
-    // Determine overall severity from the collected entries
-    for (const auto& e : raw) {
-        if (e.priority <= 2) {
-            status.overall = Severity::Crit;
-            break;
-        }
-        if (e.priority <= 3) {
-            status.overall = Severity::Warn;
-        }
-    }
-
-    // Apply window/max_lines trimming to produce recent_errors
-    status.recent_errors = filter_journal_entries(config_, raw);
-
     return status;
-#else
-    return JournalStatus{};
-#endif
 }
 
 // -----------------------------------------------------------------------------
