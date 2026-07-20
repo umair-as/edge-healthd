@@ -153,6 +153,9 @@ Config Config::load(const std::filesystem::path& path) {
             config.journal_scan_timeout =
                 std::chrono::milliseconds(le["scan_timeout_ms"].get<int>());
         }
+        if (le.contains("buffer_max_entries")) {
+            config.journal_buffer_max_entries = le["buffer_max_entries"].get<uint32_t>();
+        }
     }
 
     // Thresholds
