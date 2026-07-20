@@ -8,6 +8,64 @@
 | 0.4.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw | 2026-03-03 | 98 ms | 683 |
 | 0.5.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-g519f4a2b7bf8 | 2026-04-08 | 49 ms | 904 |
 | 0.5.1   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-gba42df28bfdb | 2026-04-09 | **12 ms** | **169** |
+| 0.7.0\* | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.37-v8-16k-igw-00007-g9a0306b38b12 | 2026-07-20 | n/a | ~950\* |
+
+> \* The 0.7.0 run used a **different monitored-service set and journal state** than the 0.5.1
+> baseline, so its total is **not** methodology-comparable — the syscall total is dominated by
+> per-unit journal opens and D-Bus proxy traffic (a function of unit count × rotated journal
+> files), not a code regression. The isolated, code-attributable delta from the v1.1 observability
+> work is **+~11 syscalls/cycle (~1.7 ms)** from the new ethtool link query. See the 0.7.0 profile
+> section below.
+
+---
+
+## Profile: edge-healthd 0.7.0 (observability / schema v1.1)
+
+Profiled on aarch64 gateway, kernel `6.18.37-v8-16k-igw-00007-g9a0306b38b12`. Binary
+`0.7.0-8-g7f927c7` (PR #52, `feat/observability-metadata`). Raw results:
+`benchmark/20260720T104236Z/` (gitignored). Hardware perf/PMU counters were not exposed on this
+target, so only timing/syscalls were captured.
+
+**Config (not matched to the 0.5.1 baseline):** 4 monitored services (`sshd.socket`,
+`systemd-networkd`, `mosquitto`, `systemd-journald`), mounts `/`,`/data`, interfaces
+auto-discovered → `eth0` (up), `eth1` (down), `collect_interval=60s`. The 0.5.1 baseline used 5
+services (incl. telegraf/influxdb) and a different journal state, so absolute totals are not
+apples-to-apples. This run's purpose was to isolate the cost of the new v1.1 observability work.
+
+### New ethtool link query (the measured delta)
+
+The v1.1 network changes add `ethtool_query_links()` to each resources cycle. Measured cost, on a
+single throwaway `NETLINK_GENERIC` socket opened and closed each cycle:
+
+- **~10–12 syscalls/cycle, ~1.72 ms**, scaling as **1 family-resolve + N interfaces**
+  (`socket` + `bind`/`getsockname` + `CTRL_CMD_GETFAMILY` sendto/recvmsg + one `LINKMODES_GET`
+  sendto/recvmsg per interface + `close`). Confirmed in the raw trace (`sendto=3/cycle`).
+- **FD-neutral** — the ethtool socket is opened and closed within the cycle; steady-state FD count
+  is unchanged.
+- **Off the D-Bus path** — D-Bus connections/cycle remain **1**; ethtool uses its own genl socket.
+
+No regression is attributable to the observability changes. Kernel time and duty cycle remain
+negligible.
+
+### Dominant steady-state cost is journal opens (pre-existing, not observability)
+
+The high total is driven by one `sd_journal_open()` **per monitored unit**
+(`ServicesProbe::get_journal_excerpt`) plus per-unit D-Bus proxy reads — the raw trace shows ~170
+journal-path references and the corresponding `openat`/`mmap`/`getdents64`/`fstat` walk. This is
+the pre-existing P1 journal-duplication cost, and it scales with unit count × rotated-file count.
+**PR #58** ("fetch per-unit journal excerpts only for unhealthy units") targets exactly this
+lever; this profile validates it as the right one.
+
+### Notes
+
+- **RSS 8.4 MB → 10.3 MB**: the +1.9 MB delta is **not** explained by the observability structs
+  (per-section freshness = a timestamp + bool; domain severities = a handful of enums — bytes, not
+  megabytes) nor by the transient ethtool buffers. It is most plausibly binary-size / allocator /
+  journal-read-buffer differences, confounded by the different service+journal state — recorded as
+  unexplained, not a code concern (10.3 MB is well within budget).
+- **Follow-up filed — issue #59:** cache the ethtool genl family id and reuse one persistent socket
+  across cycles, removing ~5–6 syscalls/cycle plus the family-resolve round-trip (roughly halving
+  the ethtool cost).
 
 ---
 
