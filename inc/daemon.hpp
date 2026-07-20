@@ -157,6 +157,12 @@ private:
     std::mutex                 crash_fp_mutex_;
     std::optional<std::string> current_panic_fingerprint_;
 
+    // Set by the AcknowledgeCrash D-Bus callback (event-loop thread) and consumed
+    // in collection_cycle() to force the crash probe due immediately, so the ack
+    // is reflected now instead of at the next scheduled crash poll. Atomic so the
+    // schedule itself is only ever touched on the collection thread (no race).
+    std::atomic<bool>          crash_ack_pending_{false};
+
     // eventfd used to interrupt the collection wait on demand. Written by the
     // async-signal-safe SIGTERM/SIGINT handler and by the D-Bus TriggerSnapshot
     // / RAUC / AcknowledgeCrash callbacks, so a shutdown or trigger breaks poll()

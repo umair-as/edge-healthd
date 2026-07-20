@@ -198,7 +198,10 @@ std::optional<std::string> SnapshotDaemon::initialize() {
                 }
                 // Wake a cycle so the acknowledged state is reflected promptly
                 // (severity drops, alarm latch clears) without waiting for the
-                // regular crash poll interval.
+                // regular crash poll interval. crash_ack_pending_ forces the
+                // schedule-gated crash probe due on that woken cycle (mirrors the
+                // RAUC path); a bare wake alone would re-aggregate stale crash data.
+                crash_ack_pending_.store(true, std::memory_order_relaxed);
                 trigger_requested_.store(true);
                 wake();
                 return true;
@@ -403,6 +406,14 @@ void SnapshotDaemon::collection_cycle() {
     }
     maybe_collect(*update_probe_,    update_schedule_,    last_known_good_.update,    "update");
     maybe_collect(*journal_probe_,   journal_schedule_,   last_known_good_.journal,   "journal");
+
+    // If a crash was acknowledged via D-Bus since the last cycle, force the crash
+    // probe due immediately so the ack (severity drop, alarm clear) is reflected
+    // on this woken cycle instead of at the next scheduled crash poll. Mirrors the
+    // RAUC path above; clear before collect so a concurrent ack is not lost.
+    if (crash_ack_pending_.exchange(false, std::memory_order_relaxed)) {
+        crash_schedule_.next_run = now;
+    }
     maybe_collect(*crash_probe_,     crash_schedule_,     last_known_good_.crash,     "crash");
 
     // Aggregate using last known good values for all probes
