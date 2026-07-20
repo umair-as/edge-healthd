@@ -4,6 +4,39 @@ All notable changes to `edge-healthd` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Snapshot schema versioning is independent — see [`docs/edge.health.state.v1.1.md`](docs/edge.health.state.v1.1.md) §8.
 
+## [0.8.0] — 2026-07-20
+
+### Added
+- **Honest observability (snapshot schema `1.1`).** The severity enum gains `unavailable` (a monitored element could not be read this cycle) and `stale` (a section is past its freshness window), with a visibility-aware roll-up `unknown < ok < stale < unavailable < warn < crit` so warm-up never alarms and a loss of visibility can no longer masquerade as health. Adds per-section `collected_at`/`stale` freshness, per-domain severity (`summary.domains`), `available` flags on storage mounts and thermal sensors (with `used_pct`/`avail_mb`/`temp_c` relaxed to optional), and populated `network[].speed_mbps`/`duplex` via the ethtool generic-netlink family. (#52)
+- **Security hardening.** Drops all capabilities and restricts syscall architectures in the unit; gates the mutating/inspection D-Bus methods to root and an operator group; builds with exploit mitigations (RELRO + BIND_NOW, PIE, FORTIFY, stack-protector, stack-clash protection, aarch64 BTI + PAC) applied to native/upstream builds too; and SHA-pins fetched build dependencies. (#60)
+- **CVE scanning in CI.** `govulncheck` for the Go web module (split gate: reachable third-party-dependency vulns block, reachable stdlib vulns are advisory), OSV-Scanner, CodeQL (C++ daemon **and** Go), and grouped weekly Dependabot updates. (#50, #53)
+
+### Changed
+- **Journal reading rearchitected onto a persistent handle.** The system journal is opened **once** at startup and followed across rotation via a bounded in-memory buffer; the `journal` section, per-unit `log_excerpt`, and `GetRecentLogs` are all derived from that buffer. This eliminates the per-cycle — and per-monitored-unit — `sd_journal_open()` that re-walked every rotated journal file, collapsing journal `openat`/`mmap` per cycle to ~0 and returning total syscalls/cycle to the historical baseline order regardless of rotated-file count. (#61)
+- **Removed vulnerable transitive dependencies** `x/net` + `x/crypto` (CVE-2024-45337, SSH auth bypass) from the web module by bumping `gorilla/websocket`. (#49)
+- **Documentation synced to the `1.1` schema contract** — the contract reference, usage and development guides, and the web README now reflect the shipped severity model, availability/freshness fields, and the `AcknowledgeCrash` D-Bus method.
+
+### Fixed
+- **Device gate no longer flakes on the `TriggerSnapshot` rate-limit** — the D-Bus section now uses the spacing/retry helper instead of a bare call. (#62)
+- **Release builds keep their hardening when the sanitizer option is set.** Hardening is now gated on sanitizers being *active for the current build type* rather than on the raw option, so a Release build with the sanitizer option enabled is no longer left with neither sanitizers nor mitigations. (#60)
+
+### CI
+- Bumped the grouped GitHub Actions dependencies. (#55)
+
+## [0.7.0] — 2026-07-20
+
+### Added
+- **Kernel-panic lifecycle in CrashProbe** — crash artifacts are boot-aged and acknowledgement-aware, and the new `AcknowledgeCrash(fingerprint)` D-Bus method clears the crash alarm; an acknowledgement forces an immediate crash re-check rather than waiting for the next scheduled poll.
+
+### Fixed
+- **Snapshot serialization is UTF-8-safe** — non-UTF-8 journal/log bytes are sanitized at capture and serialization, so a malformed log line can no longer throw and crash-loop the daemon.
+- **Prompt shutdown** — the main collection wait and the watchdog sleep are interrupted immediately on signal instead of waiting out the interval.
+- **JournalProbe journal access** — the unit grants the daemon read access to the system journal so the journal scan populates on locked-down targets.
+
+### Changed
+- **README restructured** into a landing page plus dedicated usage and development guides. (#48)
+- Mermaid diagram label fix (#47); SPDX license headers across scripts and CMake; `AGENTS.md` adopted as the canonical contributor guidance.
+
 ## [0.6.0] — 2026-05-11
 
 ### Added
@@ -65,6 +98,8 @@ Notable pre-0.5.0 features that are part of this release:
 - **NTP polling decoupled from `collect_interval`** via `time_sync_interval_sec`. (#21)
 - **Optional web UI** — Go server with HTTPS, Preact + TypeScript dashboard, WebSocket push, dark mode. Built behind `EDGE_WEB_UI=ON`. (#11)
 
+[0.8.0]: https://github.com/umair-as/edge-healthd/releases/tag/v0.8.0
+[0.7.0]: https://github.com/umair-as/edge-healthd/releases/tag/v0.7.0
 [0.6.0]: https://github.com/umair-as/edge-healthd/releases/tag/v0.6.0
 [0.5.1]: https://github.com/umair-as/edge-healthd/releases/tag/v0.5.1
 [0.5.0]: https://github.com/umair-as/edge-healthd/releases/tag/v0.5.0
