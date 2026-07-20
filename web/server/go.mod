@@ -1,9 +1,9 @@
 module github.com/umair-as/edge-healthd/web/server
 
-go 1.22
+go 1.23
 
 require (
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gorilla/websocket v1.5.3
 )
 
