@@ -42,6 +42,12 @@ SnapshotState SnapshotAggregator::aggregate(
     auto journal_sev = evaluate_journal(journal);
     auto crash_sev = evaluate_crash(crash);
 
+    // Expose per-domain severity so the roll-up can't mask a single degraded
+    // (or blind) domain.
+    state.summary.domains = DomainSeverities{
+        boot_sev, services_sev, resources_sev,
+        time_sync_sev, update_sev, journal_sev, crash_sev};
+
     // Compute overall
     state.summary.severity = compute_overall(
         boot_sev, services_sev, resources_sev, time_sync_sev, update_sev, journal_sev, crash_sev);

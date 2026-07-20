@@ -242,6 +242,11 @@ TEST_CASE("Aggregator adds crash reasons for current-boot panic", "[aggregator]"
     CHECK(has_kernel_panic);
     CHECK(has_pstore_present);
     CHECK(state.summary.severity == Severity::Crit);
+
+    // Per-domain severity surfaces the crash domain without masking the others.
+    CHECK(state.summary.domains.crash == Severity::Crit);
+    CHECK(state.summary.domains.boot == Severity::Ok);
+    CHECK(state.summary.domains.resources == Severity::Ok);
 }
 
 TEST_CASE("Aggregator: prior-boot panic is historical, not crit", "[aggregator]") {

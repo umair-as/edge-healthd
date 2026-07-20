@@ -304,8 +304,21 @@ struct CrashStatus {
     bool panic_current_boot = false;
 };
 
+// Per-domain severity, exposed so the top-line roll-up can't hide a single
+// newly-degraded (or newly-blind) domain. Mirrors the seven aggregated probes.
+struct DomainSeverities {
+    Severity boot      = Severity::Unknown;
+    Severity services  = Severity::Unknown;
+    Severity resources = Severity::Unknown;
+    Severity time_sync = Severity::Unknown;
+    Severity update    = Severity::Unknown;
+    Severity journal   = Severity::Unknown;
+    Severity crash     = Severity::Unknown;
+};
+
 struct SnapshotSummary {
     Severity severity = Severity::Unknown;
+    DomainSeverities domains;
     std::vector<std::string> reasons{"initial"};
     std::optional<std::string> notes;
 };

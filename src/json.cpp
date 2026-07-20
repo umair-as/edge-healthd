@@ -320,8 +320,18 @@ void to_json(nlohmann::json& j, const CrashStatus& crash) {
 }
 
 void to_json(nlohmann::json& j, const SnapshotSummary& summary) {
+    auto sev = [](Severity s) { return std::string(edge::to_string(s)); };
     j = nlohmann::json{
-        {"severity", std::string(edge::to_string(summary.severity))},
+        {"severity", sev(summary.severity)},
+        {"domains", {
+            {"boot",      sev(summary.domains.boot)},
+            {"services",  sev(summary.domains.services)},
+            {"resources", sev(summary.domains.resources)},
+            {"time_sync", sev(summary.domains.time_sync)},
+            {"update",    sev(summary.domains.update)},
+            {"journal",   sev(summary.domains.journal)},
+            {"crash",     sev(summary.domains.crash)}
+        }},
         {"reasons", summary.reasons}
     };
 
