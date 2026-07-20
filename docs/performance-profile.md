@@ -8,6 +8,106 @@
 | 0.4.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw | 2026-03-03 | 98 ms | 683 |
 | 0.5.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-g519f4a2b7bf8 | 2026-04-08 | 49 ms | 904 |
 | 0.5.1   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.13-v8-16k-igw-00005-gba42df28bfdb | 2026-04-09 | **12 ms** | **169** |
+| 0.7.0   | Raspberry Pi 5 (BCM2712, 4× Cortex-A76 @ 2.4 GHz) | 6.18.37-v8-16k-igw-00007-g9a0306b38b12 | 2026-07-20 | ~60 ms † | **~200** |
+
+† Burst wall-clock is now dominated by blocking D-Bus round trips (`ppoll` waits), not CPU —
+kernel time is ~1.85 ms/cycle. It is load- and D-Bus-latency-dependent and not directly
+comparable to 0.5.1's fresh-device figure. The meaningful, comparable metric is syscalls/cycle.
+
+---
+
+## Profile: edge-healthd 0.7.0
+
+Profiled on Raspberry Pi 5 (4-core Cortex-A76, 8 GB RAM), kernel
+6.18.37-v8-16k-igw-00007-g9a0306b38b12. Binary: aarch64 Yocto build,
+systemd-managed. Raw results: `benchmark/20260720T122040Z/` (gitignored).
+
+This build adds the schema v1.1 observability work (per-cycle ethtool link
+speed/duplex query, availability/freshness/per-domain severity) **and** replaces
+the per-cycle `sd_journal_open()` model with a persistent journal reader.
+
+### Test Configuration
+
+```json
+{
+  "collect_interval_sec": 60,
+  "time_sync_interval_sec": 300,
+  "update_check_interval_sec": 1800,
+  "monitored_services": ["sshd.socket", "systemd-networkd.service",
+                          "mosquitto.service", "systemd-journald.service"],
+  "monitored_mounts": ["/", "/data"],
+  "monitored_interfaces": []
+}
+```
+
+Unlike the fresh 0.5.1 target, this device has accumulated uptime and **~15 rotated
+journal files** — exactly the condition the 0.5.1 profile predicted would inflate the
+old per-cycle `sd_journal_open()` cost.
+
+### Syscall Summary (130 s window, 2 collection cycles)
+
+```
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 23.50    0.000867          34        25           openat
+ 21.49    0.000793           6       114        36 recvmsg
+ 11.90    0.000439          11        38           ppoll
+  8.83    0.000326           8        37           sendmsg
+  5.31    0.000196           4        40         3 futex
+  4.69    0.000173          10        16           newfstatat
+  4.58    0.000169           5        29           close
+  4.44    0.000164           6        25         2 read
+  3.25    0.000120          20         6           sendto
+  2.20    0.000081          20         4           socket
+  1.65    0.000061           7         8           statfs
+  1.38    0.000051          25         2           renameat
+  1.38    0.000051           6         8           getdents64
+  1.17    0.000043          21         2           readlinkat
+  ...
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.003690           9       400        41 total
+```
+
+**Totals (2 cycles):** 400 calls, 3.69 ms kernel time. **Per cycle:** ~200 calls,
+~1.85 ms kernel time — back to the 0.5.1 baseline order despite more rotated journal
+files and the added per-cycle ethtool query.
+
+### Journal Scanning (0.7.0) — persistent reader
+
+The daemon now opens the system journal **once** at startup and keeps the handle open
+(`sd_journal` follows rotation while open), maintaining a bounded in-memory buffer.
+`JournalProbe` and per-unit `log_excerpt` read the buffer; each cycle does one
+`sd_journal_wait(0)` and reads only newly-appended entries.
+
+| Metric (2 cycles) | 0.7.0 pre-reader (per-cycle open) | 0.7.0 persistent reader |
+|---|---|---|
+| journal `openat` | 170 | **2** (one-time prime) |
+| `mmap` / `readlinkat` / `getdents64` | 130 / 130 / 68 | ~0 / 4 / 8 |
+| `fstat` | 294 | 6 |
+| total syscalls | 1,903 | **400** |
+
+The old model did one `sd_journal_open()` per monitored unit **plus** one for the system
+scan, each re-walking every rotated file — ~88 % of per-cycle `openat`. The cost scaled
+with monitored-unit count and rotated-file count; it is now **independent of both**.
+
+### Network — ethtool link query (0.7.0)
+
+`speed_mbps`/`duplex` are populated via an ethtool generic-netlink query in the resources
+cycle: ~10–12 syscalls (`socket`/`bind`/`getsockname`/`sendto ×3`/`recvmsg`/`close`), ~1.7 ms,
+scaling as 1 family-resolve + N interfaces. The family id is re-resolved each cycle —
+tracked for a follow-up optimisation (cache the family / reuse the socket).
+
+### Resource Footprint
+
+| Metric | 0.5.1 | 0.7.0 | Note |
+|---|---|---|---|
+| VmRSS | 5.5 MB | ~15.3 MB | persistent `sd_journal` mmaps + buffer resident |
+| Open FDs (steady state) | 10 | 22 | +~10 journal fds + inotify held open (vs opened/closed per cycle) |
+| Kernel time / cycle | 0.97 ms | ~1.85 ms | more probes; still negligible |
+| Duty cycle (CPU) | 0.020 % | ~0.003 % | (kernel time / interval) |
+
+The persistent handle trades ~10 held-open fds and ~10 MB RSS (well within the 64 MB cap)
+for eliminating the per-cycle open churn and decoupling cost from rotated-file count.
 
 ---
 
