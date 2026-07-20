@@ -7,8 +7,10 @@
 #include "version.hpp"
 
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <unistd.h>
 
@@ -173,10 +175,24 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    if (args.once) {
-        daemon.collect_now();
-        return EXIT_SUCCESS;
-    }
+    // Top-level backstop: any exception that escapes the daemon (e.g. a residual
+    // serialization throw) must be logged and turned into a clean EXIT_FAILURE
+    // rather than std::terminate — an unhandled throw here would abort and, on a
+    // restart, re-abort on the same journal tail (crash-loop).
+    try {
+        if (args.once) {
+            daemon.collect_now();
+            return EXIT_SUCCESS;
+        }
 
-    return daemon.run();
+        return daemon.run();
+    } catch (const std::exception& ex) {
+        edge::log::error(std::string("Fatal: unhandled exception: ") + ex.what());
+        std::cerr << "Fatal: unhandled exception: " << ex.what() << "\n";
+        return EXIT_FAILURE;
+    } catch (...) {
+        edge::log::error("Fatal: unhandled non-standard exception");
+        std::cerr << "Fatal: unhandled non-standard exception\n";
+        return EXIT_FAILURE;
+    }
 }

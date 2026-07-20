@@ -248,6 +248,7 @@ if(EDGE_BUILD_TESTS)
         tests/test_writer.cpp
         tests/test_json.cpp
         tests/test_journal.cpp
+        tests/test_serialization_safety.cpp
     )
 
     target_link_libraries(edge-snapshot-tests

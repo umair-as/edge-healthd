@@ -880,7 +880,9 @@ ProbeResult<JournalStatus> JournalProbe::collect() const {
                     ptr += 8;
                     length -= 8;
                 }
-                msg.assign(ptr, ptr + std::min(length, static_cast<size_t>(1024)));
+                // MESSAGE is arbitrary bytes; scrub invalid UTF-8 so it can never
+                // make the snapshot serializer throw (defense in depth).
+                msg = sanitize_utf8(std::string_view(ptr, std::min(length, static_cast<size_t>(1024))));
             }
             raw.push_back(JournalEntry{usec, pri, std::move(msg)});
         }
