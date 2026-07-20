@@ -131,7 +131,7 @@ Exit code is 0 on all-pass / 1 on any failure.
 python3 scripts/validate_schema.py /run/health/state.json
 ```
 
-Uses `jsonschema` (Draft 2020-12) against `schemas/edge.health.state.v1.0.json`.
+Uses `jsonschema` (Draft 2020-12) against `schemas/edge.health.state.v1.1.json` (the current schema; pass `--schema` to check against `v1.0`).
 
 ## Benchmarking
 

@@ -63,7 +63,7 @@
   - `README.md` for landing-page level messaging.
   - `docs/usage.md` for operator behavior.
   - `docs/development.md` for build/dev workflows.
-  - `docs/edge.health.state.v1.0.md` and `schemas/` for schema updates.
+  - `docs/edge.health.state.v1.1.md` (current contract) and `schemas/` for schema updates.
 
 ## Commit and PR Hygiene
 - Conventional Commits only: `feat|fix|refactor|build|docs|test|chore|perf(scope): message`.
