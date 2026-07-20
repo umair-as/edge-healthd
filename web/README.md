@@ -12,16 +12,17 @@ The Web UI provides a local dashboard that displays health status from edge-heal
 ## Stack
 
 - **Frontend**: Preact + Signals + TypeScript + Tailwind CSS
-- **Backend**: Go microserver with embedded assets
+- **Backend**: Go microserver with embedded assets, HTTPS by default
 - **Communication**: WebSocket for real-time updates (HTTP polling fallback)
 
 ## Features
 
 - Real-time health monitoring via WebSocket
+- HTTPS with self-signed cert by default; plain HTTP available for development
 - Dark/light theme with system preference detection
 - Offline support with localStorage persistence
 - Mobile-responsive design
-- Security headers and local-only access restriction
+- Security headers, RFC1918 source-IP allowlist, CSRF guard on mutating endpoints
 
 ## Building
 
@@ -98,10 +99,13 @@ Then open http://localhost:5173 in your browser.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-listen` | `:8080` | HTTP listen address |
-| `-state` | `/data/edge/health/state.json` | Path to health state file |
-| `-local-only` | `true` | Restrict access to private IPs |
+| `-listen` | `:8443` | Listen address. HTTPS when `-tls-cert`/`-tls-key` are set, plain HTTP otherwise. |
+| `-state` | `/data/edge/health/state.json` | Path to health state file. Yocto installs typically override this to `/run/health/state.json` via the systemd unit. |
+| `-local-only` | `true` | Restrict access to private IPs (loopback + RFC1918 + IPv6 ULA/link-local). |
+| `-tls-cert` | _empty_ | Path to TLS certificate (PEM). Must be set together with `-tls-key`; enables HTTPS. |
+| `-tls-key` | _empty_ | Path to TLS private key (PEM). Must be set together with `-tls-cert`. |
 | `-allowed-origins` | _empty_ | Extra Origins for WebSocket + mutating endpoints (comma-separated `host[:port]` or full URLs). Same-origin is always allowed; this is only needed for dev proxies (Vite). Leave empty in production. |
+| `-version` | _flag_ | Print version and exit. |
 
 ### Environment Variables
 
@@ -148,20 +152,31 @@ All responses include:
 
 ## Systemd Service
 
-Install and enable:
+The shipped unit (`web/systemd/edge-healthd-ui.service`) runs HTTPS on `:8443`,
+reads state from `/run/health/state.json`, and loads its cert/key from
+`/etc/edge/tls/{cert,key}.pem`. A fresh install therefore needs a TLS cert in
+place before the unit will come up cleanly.
+
+For production targets, install via the Yocto recipe — `/usr/bin/` is typically
+read-only on edge gateways and manual installs won't work.
+
+For a writable host (dev VM, workstation):
 
 ```bash
-# Install binary
+# 1. Install binary and unit (writable rootfs only)
 sudo install -m 755 build/edge-healthd-ui /usr/bin/
-
-# Install service file
 sudo install -m 644 web/systemd/edge-healthd-ui.service /lib/systemd/system/
 
-# Reload and enable
+# 2. Generate a self-signed cert (skips if a valid one already exists)
+sudo edge-healthd-gen-cert            # installed by `cmake --install`
+#   — or, from a source tree:
+sudo scripts/gen-tls-cert.sh
+
+# 3. Reload and enable
 sudo systemctl daemon-reload
 sudo systemctl enable --now edge-healthd-ui
 
-# Check status
+# 4. Check status
 systemctl status edge-healthd-ui
 journalctl -u edge-healthd-ui -f
 ```
@@ -175,46 +190,16 @@ journalctl -u edge-healthd-ui -f
 | First paint | < 500ms | ~200ms |
 | CPU idle | < 1% | <0.5% |
 
-## Project Structure
+## Project Layout
 
-```
-web/
-├── CMakeLists.txt          # CMake build integration
-├── README.md               # This file
-├── server/                 # Go microserver
-│   ├── go.mod
-│   ├── main.go             # Entry point
-│   ├── config.go           # Configuration
-│   ├── server.go           # HTTP server
-│   ├── handlers.go         # API handlers
-│   ├── websocket.go        # WebSocket hub
-│   ├── watcher.go          # inotify file watcher
-│   ├── middleware.go       # Security middleware
-│   ├── embed.go            # Static asset embedding
-│   └── dist/               # Embedded frontend (built)
-├── ui/                     # Preact frontend
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   ├── index.html
-│   └── src/
-│       ├── main.tsx
-│       ├── App.tsx
-│       ├── types/          # TypeScript types
-│       ├── state/          # Preact Signals
-│       ├── hooks/          # React hooks
-│       ├── components/     # UI components
-│       └── views/          # Page views
-├── docker/                 # Development containers
-│   ├── Dockerfile.dev
-│   └── docker-compose.yml
-├── mock/                   # Mock data generator
-│   ├── generate_state.py
-│   └── sample_states/
-└── systemd/                # Systemd service
-    └── edge-healthd-ui.service
-```
+| Directory | Purpose |
+|-----------|---------|
+| `server/` | Go microserver — serves the embedded SPA, `/api/health`, `/api/trigger`, and `/ws/health`; bridges to the daemon over D-Bus. |
+| `ui/` | Preact + TypeScript + Tailwind frontend; built with Vite, output embedded into the Go binary at build time. |
+| `docker/` | Local development containers (Vite HMR + Go server + mock data). |
+| `mock/` | Mock `state.json` generator for UI development without a running daemon. |
+| `systemd/` | Production systemd unit for `edge-healthd-ui`. |
+| `CMakeLists.txt` | Build integration — invokes `npm` and `go build`, embeds assets, installs binary + unit. |
 
 ## License
 
