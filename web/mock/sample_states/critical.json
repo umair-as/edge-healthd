@@ -1,6 +1,6 @@
 {
   "schema": "edge.health.state",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "generated_at": "2024-01-15T12:00:00Z",
   "device": {
     "device_id": "edge-dev-001",
@@ -20,7 +20,9 @@
     "uptime": 14400,
     "boot_ok": false,
     "boot_fail_count": 2,
-    "last_reboot_reason": "watchdog"
+    "last_reboot_reason": "watchdog",
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "services": {
     "overall": "crit",
@@ -76,7 +78,9 @@
           "Jan 15 11:55:00 edge chronyd[2345]: No valid NTP sources"
         ]
       }
-    ]
+    ],
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "resources": {
     "sample_window_sec": 60,
@@ -94,24 +98,26 @@
       {
         "mount": "/",
         "fs": "ext4",
-        "used_pct": 95,
-        "avail_mb": 102
+        "available": false
       },
       {
         "mount": "/data",
         "fs": "ext4",
         "used_pct": 78,
-        "avail_mb": 1843
+        "avail_mb": 1843,
+        "available": true
       }
     ],
     "thermal": [
       {
         "sensor": "cpu_thermal",
-        "temp_c": 82.5
+        "temp_c": 82.5,
+        "available": true
       },
       {
         "sensor": "gpu_thermal",
-        "temp_c": 78.3
+        "temp_c": 78.3,
+        "available": true
       }
     ],
     "network": [
@@ -147,7 +153,9 @@
         "speed_mbps": null,
         "duplex": null
       }
-    ]
+    ],
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "time_sync": {
     "overall": "warn",
@@ -162,7 +170,6 @@
       "interface": null,
       "offset_ns": null,
       "rms_ns": null,
-      "state": null,
       "last_sync_at": null,
       "role": null
     },
@@ -170,7 +177,9 @@
       "enabled": true,
       "hctosys": false,
       "voltage_mv": 2310
-    }
+    },
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "update": {
     "overall": "crit",
@@ -180,10 +189,21 @@
       "installed_at": "2024-01-14T18:00:00Z",
       "result": "failed",
       "detail": "Update verification failed - rollback initiated"
-    }
+    },
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "summary": {
     "severity": "crit",
+    "domains": {
+      "boot": "ok",
+      "services": "crit",
+      "resources": "crit",
+      "time_sync": "warn",
+      "update": "crit",
+      "journal": "crit",
+      "crash": "ok"
+    },
     "reasons": [
       "service:edge-ota.service:failed",
       "high_memory",
@@ -202,6 +222,8 @@
       "Apr 10 08:11:58 gw edge-healthd[512]: probe error: ServicesProbe: org.freedesktop.systemd1 timeout",
       "Apr 10 08:09:44 gw NetworkManager[341]: device eth0: carrier lost",
       "Apr 10 08:09:41 gw kernel: eth0: renamed from veth3a2b1c"
-    ]
+    ],
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   }
 }

@@ -35,7 +35,7 @@ def main() -> int:
     parser.add_argument("snapshot", help="Path to snapshot JSON file.")
     parser.add_argument(
         "--schema",
-        default="schemas/edge.health.state.v1.0.json",
+        default="schemas/edge.health.state.v1.1.json",
         help="Path to schema JSON file.",
     )
     args = parser.parse_args()

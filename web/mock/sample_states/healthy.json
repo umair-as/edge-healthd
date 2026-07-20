@@ -1,6 +1,6 @@
 {
   "schema": "edge.health.state",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "generated_at": "2024-01-15T12:00:00Z",
   "device": {
     "device_id": "edge-dev-001",
@@ -20,7 +20,9 @@
     "uptime": 14400,
     "boot_ok": true,
     "boot_fail_count": 0,
-    "last_reboot_reason": null
+    "last_reboot_reason": null,
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "services": {
     "overall": "ok",
@@ -65,7 +67,9 @@
         "detail": null,
         "log_excerpt": []
       }
-    ]
+    ],
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "resources": {
     "sample_window_sec": 60,
@@ -84,23 +88,27 @@
         "mount": "/",
         "fs": "ext4",
         "used_pct": 35,
-        "avail_mb": 2048
+        "avail_mb": 2048,
+        "available": true
       },
       {
         "mount": "/data",
         "fs": "ext4",
         "used_pct": 20,
-        "avail_mb": 8192
+        "avail_mb": 8192,
+        "available": true
       }
     ],
     "thermal": [
       {
         "sensor": "cpu_thermal",
-        "temp_c": 45.2
+        "temp_c": 45.2,
+        "available": true
       },
       {
         "sensor": "gpu_thermal",
-        "temp_c": 42.1
+        "temp_c": 42.1,
+        "available": true
       }
     ],
     "network": [
@@ -120,7 +128,9 @@
         "speed_mbps": 1000,
         "duplex": "full"
       }
-    ]
+    ],
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "time_sync": {
     "overall": "ok",
@@ -135,7 +145,6 @@
       "interface": null,
       "offset_ns": null,
       "rms_ns": null,
-      "state": null,
       "last_sync_at": null,
       "role": null
     },
@@ -144,7 +153,9 @@
       "hctosys": true,
       "voltage_mv": 2950,
       "drift_sec": 0.3
-    }
+    },
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "update": {
     "overall": "ok",
@@ -154,10 +165,21 @@
       "installed_at": "2024-01-10T12:00:00Z",
       "result": "success",
       "detail": null
-    }
+    },
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   },
   "summary": {
     "severity": "ok",
+    "domains": {
+      "boot": "ok",
+      "services": "ok",
+      "resources": "ok",
+      "time_sync": "ok",
+      "update": "ok",
+      "journal": "ok",
+      "crash": "ok"
+    },
     "reasons": [
       "all_ok"
     ],
@@ -167,6 +189,8 @@
   "journal": {
     "overall": "ok",
     "error_count": 0,
-    "recent_errors": []
+    "recent_errors": [],
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
   }
 }

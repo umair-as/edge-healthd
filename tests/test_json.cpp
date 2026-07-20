@@ -162,7 +162,7 @@ TEST_CASE("JSON serialize full SnapshotState", "[json]") {
     auto j = nlohmann::json(state);
 
     CHECK(j["schema"] == "edge.health.state");
-    CHECK(j["schema_version"] == "1.0");
+    CHECK(j["schema_version"] == "1.1");
     CHECK(j.contains("generated_at"));
     CHECK(j.contains("device"));
     CHECK(j.contains("boot"));

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // edge-healthd: Core type definitions
-// These types map directly to the edge.health.state JSON schema (v1.0)
+// These types map directly to the edge.health.state JSON schema (v1.1)
 
 #pragma once
 
@@ -347,7 +347,7 @@ struct SnapshotSummary {
 struct SnapshotState {
     // Schema metadata
     static constexpr std::string_view schema = "edge.health.state";
-    static constexpr std::string_view schema_version = "1.0";
+    static constexpr std::string_view schema_version = "1.1";
     std::chrono::system_clock::time_point generated_at;
     uint64_t cycle = 0;  // Monotonic counter incremented on every collection cycle.
                          // Consumers can use this to confirm the daemon is collecting

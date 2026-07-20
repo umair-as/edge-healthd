@@ -1,0 +1,810 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.edge.example/edge.health.state.v1.1.json",
+  "title": "Edge Device Health Snapshot",
+  "description": "edge.health.state v1.1 \u2014 adds observability metadata: severity states unavailable/stale, per-section collected_at/stale, per-domain severity (summary.domains), and available flags on storage/thermal (with used_pct/avail_mb/temp_c now optional). All additions are backward-compatible except the storage/thermal required relaxation.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "edge.health.state"
+    },
+    "schema_version": {
+      "const": "1.1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "device": {
+      "type": "object",
+      "properties": {
+        "device_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "os": {
+          "type": "object",
+          "properties": {
+            "distro": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "build_id": {
+              "type": "string"
+            },
+            "kernel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "distro",
+            "kernel"
+          ]
+        }
+      },
+      "required": [
+        "device_id",
+        "hostname",
+        "platform",
+        "arch",
+        "os"
+      ]
+    },
+    "boot": {
+      "type": "object",
+      "properties": {
+        "boot_id": {
+          "type": "string"
+        },
+        "last_boot_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "uptime": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "boot_ok": {
+          "type": "boolean"
+        },
+        "boot_fail_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_reboot_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "boot_id",
+        "last_boot_at",
+        "uptime",
+        "boot_ok",
+        "boot_fail_count"
+      ]
+    },
+    "services": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/severity"
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "state": {
+                "$ref": "#/$defs/service_state"
+              },
+              "severity": {
+                "$ref": "#/$defs/severity"
+              },
+              "since": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "restart_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "result": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "detail": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "log_excerpt": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "name",
+              "state",
+              "severity",
+              "restart_count"
+            ]
+          }
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "overall",
+        "units"
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "sample_window_sec": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cpu": {
+          "type": "object",
+          "properties": {
+            "load1": {
+              "type": "number",
+              "minimum": 0
+            },
+            "load5": {
+              "type": "number",
+              "minimum": 0
+            },
+            "load15": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "load1",
+            "load5",
+            "load15"
+          ]
+        },
+        "memory": {
+          "type": "object",
+          "properties": {
+            "mem_total_mb": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "mem_used_mb": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "swap_used_mb": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "mem_total_mb",
+            "mem_used_mb",
+            "swap_used_mb"
+          ]
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mount": {
+                "type": "string"
+              },
+              "fs": {
+                "type": "string"
+              },
+              "used_pct": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "avail_mb": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "available": {
+                "type": "boolean",
+                "description": "False when the mount could not be read (unmounted/missing); used_pct/avail_mb are then omitted."
+              }
+            },
+            "required": [
+              "mount",
+              "available"
+            ]
+          }
+        },
+        "thermal": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sensor": {
+                "type": "string"
+              },
+              "temp_c": {
+                "type": "number"
+              },
+              "available": {
+                "type": "boolean",
+                "description": "False when the sensor read failed or was out of range; temp_c is then omitted."
+              }
+            },
+            "required": [
+              "sensor",
+              "available"
+            ]
+          }
+        },
+        "network": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ifname": {
+                "type": "string"
+              },
+              "link": {
+                "$ref": "#/$defs/link_state"
+              },
+              "rx_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tx_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rx_packets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tx_packets": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rx_dropped": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tx_dropped": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rx_err": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "tx_err": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ip": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "carrier": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "speed_mbps": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "duplex": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "full",
+                      "half",
+                      "unknown"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "ifname",
+              "link",
+              "rx_bytes",
+              "tx_bytes",
+              "rx_packets",
+              "tx_packets",
+              "rx_dropped",
+              "tx_dropped",
+              "rx_err",
+              "tx_err"
+            ]
+          }
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "sample_window_sec",
+        "cpu",
+        "memory",
+        "network"
+      ]
+    },
+    "time_sync": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/severity"
+        },
+        "source": {
+          "$ref": "#/$defs/time_sync_source"
+        },
+        "ntp": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "state": {
+              "$ref": "#/$defs/time_sync_state"
+            },
+            "last_sync_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "ptp": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "interface": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "offset_ns": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rms_ns": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "state": {
+              "$ref": "#/$defs/time_sync_state"
+            },
+            "last_sync_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "role": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "enabled"
+          ]
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "overall",
+        "source"
+      ]
+    },
+    "update": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/severity"
+        },
+        "active_slot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_update": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "installed_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "result": {
+                  "$ref": "#/$defs/update_result"
+                },
+                "detail": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "result"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "overall"
+      ]
+    },
+    "journal": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "$ref": "#/$defs/severity"
+        },
+        "error_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recent_errors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 512
+          }
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "overall",
+        "error_count",
+        "recent_errors"
+      ]
+    },
+    "crash": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "pstore"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_panic_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "mtime": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "size_bytes"
+            ]
+          }
+        },
+        "acknowledged": {
+          "type": "boolean"
+        },
+        "collected_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Wall-clock time of the last successful collection of this section."
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when this section was collected before but is now past its freshness window."
+        }
+      },
+      "required": [
+        "present",
+        "artifact_count",
+        "artifacts",
+        "acknowledged"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "domains": {
+          "type": "object",
+          "description": "Per-domain severity roll-up.",
+          "properties": {
+            "boot": {
+              "$ref": "#/$defs/severity"
+            },
+            "services": {
+              "$ref": "#/$defs/severity"
+            },
+            "resources": {
+              "$ref": "#/$defs/severity"
+            },
+            "time_sync": {
+              "$ref": "#/$defs/severity"
+            },
+            "update": {
+              "$ref": "#/$defs/severity"
+            },
+            "journal": {
+              "$ref": "#/$defs/severity"
+            },
+            "crash": {
+              "$ref": "#/$defs/severity"
+            }
+          },
+          "additionalProperties": false
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(:[a-zA-Z0-9_.:/-]+)?$"
+          }
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "severity",
+        "reasons"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "schema_version",
+    "generated_at",
+    "device",
+    "boot",
+    "services",
+    "resources",
+    "time_sync",
+    "update",
+    "journal",
+    "summary"
+  ],
+  "$defs": {
+    "severity": {
+      "enum": [
+        "ok",
+        "warn",
+        "crit",
+        "unknown",
+        "unavailable",
+        "stale"
+      ]
+    },
+    "service_state": {
+      "enum": [
+        "active",
+        "inactive",
+        "failed",
+        "activating",
+        "deactivating",
+        "unknown"
+      ]
+    },
+    "link_state": {
+      "enum": [
+        "up",
+        "down",
+        "unknown"
+      ]
+    },
+    "time_sync_source": {
+      "enum": [
+        "none",
+        "ntp",
+        "ptp"
+      ]
+    },
+    "time_sync_state": {
+      "enum": [
+        "locked",
+        "free_running",
+        "holdover",
+        "unknown"
+      ]
+    },
+    "update_result": {
+      "enum": [
+        "success",
+        "failed",
+        "unknown"
+      ]
+    }
+  }
+}
