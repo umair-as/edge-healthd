@@ -12,13 +12,13 @@ The Web UI provides a local dashboard that displays health status from edge-heal
 ## Stack
 
 - **Frontend**: Preact + Signals + TypeScript + Tailwind CSS
-- **Backend**: Go microserver with embedded assets, HTTPS by default
+- **Backend**: Go microserver with embedded assets; HTTPS in the shipped deployment (plain HTTP for local development)
 - **Communication**: WebSocket for real-time updates (HTTP polling fallback)
 
 ## Features
 
 - Real-time health monitoring via WebSocket
-- HTTPS with self-signed cert by default; plain HTTP available for development
+- HTTPS with a self-signed cert in the shipped systemd unit; plain HTTP when `-tls-cert`/`-tls-key` are omitted (development)
 - Dark/light theme with system preference detection
 - Offline support with localStorage persistence
 - Mobile-responsive design
@@ -199,7 +199,8 @@ journalctl -u edge-healthd-ui -f
 | `docker/` | Local development containers (Vite HMR + Go server + mock data). |
 | `mock/` | Mock `state.json` generator for UI development without a running daemon. |
 | `systemd/` | Production systemd unit for `edge-healthd-ui`. |
-| `CMakeLists.txt` | Build integration — invokes `npm` and `go build`, embeds assets, installs binary + unit. |
+
+Build integration lives alongside these directories: it invokes `npm` and `go build`, embeds the built assets into the Go binary, and installs the binary plus systemd unit.
 
 ## License
 

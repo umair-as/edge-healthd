@@ -108,13 +108,28 @@ Time-bearing fields:
 
 ## 4. Severity model
 
-Enum: `ok | warn | crit | unknown`. Aggregation follows **worst-wins**:
+Enum: `ok | warn | crit | unknown | unavailable | stale`. Aggregation follows a
+**worst-wins** roll-up over this ranking:
 
 ```
-crit > warn > ok > unknown
+unknown < ok < stale < unavailable < warn < crit
 ```
 
-Each subsystem (`services`, `time_sync`, `update`, `journal`, plus `crash` when present) reports its own `overall`. The top-level `summary.severity` is the aggregate.
+- `unknown` — never observed (warm-up, or an absent optional dependency). It ranks
+  **below** `ok` so a fresh boot with subsystems still coming up never alarms.
+- `stale` — a section was collected before but is now past its freshness window.
+- `unavailable` — a monitored element could not be read this cycle (unmounted path,
+  dead thermal sensor).
+
+`stale` and `unavailable` sit **above** `ok` but **below** `warn`/`crit`: a loss of
+visibility surfaces on the top line, yet a real health signal — including the
+last-known `warn`/`crit` retained by a section that has since gone stale — still
+dominates.
+
+Each subsystem (`services`, `time_sync`, `update`, `journal`, plus `crash` when
+present) reports its own `overall`. The top-level `summary.severity` is the
+aggregate, and `summary.domains` (§6.9) exposes each domain's contribution so a
+single degraded or blind domain is never hidden by the roll-up.
 
 ## 5. Reason codes (`summary.reasons[]`)
 
@@ -179,20 +194,21 @@ ServiceUnit    { name, state, severity, restart_count,
 - `state` — one of `active | inactive | failed | activating | deactivating | unknown`.
 - `result` — pass-through of the systemd `Result` property (e.g. `success`, `core-dump`, `socket-activated` for socket-activated units).
 - `restart_count` — best-effort count since boot.
-- `log_excerpt` — up to 20 bounded strings (≤ 512 chars each), populated when `log_excerpt.max_lines > 0` is configured.
+- `log_excerpt` — up to `log_excerpt.max_lines` bounded strings (≤ 512 chars each), populated when `log_excerpt.max_lines > 0` is configured.
 
 ### 6.4 `resources`
 
 ```
 ResourcesStatus { sample_window_sec, cpu, memory,
-                  storage[]?, thermal[]?, network[] }
+                  storage[]?, thermal[]?, network[],
+                  collected_at?, stale? }
 ```
 
 - **`cpu`** — `{ load1, load5, load15 }`. Raw `/proc/loadavg` values; policy may normalize `load1` as percent-of-cores for threshold evaluation.
 - **`memory`** — `{ mem_total_mb, mem_used_mb, swap_used_mb }`.
-- **`storage[]`** — one entry per `monitored_mounts`. Required keys: `mount, used_pct, avail_mb`. `fs` optional.
-- **`thermal[]`** — one entry per discovered `/sys/class/thermal/thermal_zone*` sensor when `enable_thermal: true`.
-- **`network[]`** — one entry per interface. When `monitored_interfaces` is empty (default), **all non-loopback interfaces are reported automatically**. Counters (`rx_bytes`, `tx_bytes`, `rx_packets`, `tx_packets`, `rx_dropped`, `tx_dropped`, `rx_err`, `tx_err`) come from Netlink (`RTM_GETLINK`) — no `/sys/class/net` polling. Optional: `ip` (IPv4), `carrier`, `speed_mbps`, `duplex`.
+- **`storage[]`** — one entry per `monitored_mounts`. Required keys: `mount, available`. When `available: true`, `used_pct` and `avail_mb` are present; when `available: false` (statvfs failed / path unmounted) both numeric fields are **omitted** instead of reporting a misleading `0`, and the mount contributes `unavailable` to the `resources` severity. `fs` optional.
+- **`thermal[]`** — one entry per discovered `/sys/class/thermal/thermal_zone*` sensor when `enable_thermal: true`. Required keys: `sensor, available`. `temp_c` is present only when `available: true` (sensor read succeeded and the value is within plausible range); an unreadable or out-of-range sensor sets `available: false`, omits `temp_c`, and contributes `unavailable`.
+- **`network[]`** — one entry per interface. When `monitored_interfaces` is empty (default), **all non-loopback interfaces are reported automatically**. Required: `ifname, link` and the counters `rx_bytes`, `tx_bytes`, `rx_packets`, `tx_packets`, `rx_dropped`, `tx_dropped`, `rx_err`, `tx_err` — sourced from Netlink (`RTM_GETLINK`), no `/sys/class/net` polling. Optional: `ip` (IPv4), `carrier`, `speed_mbps`, `duplex` (`full | half | unknown`). `speed_mbps`/`duplex` are populated via the ethtool generic-netlink family and are `null`/omitted for link-down or ethtool-less interfaces.
 
 ### 6.5 `time_sync`
 
@@ -202,7 +218,7 @@ TimeSyncStatus { overall, source, ntp, ptp, rtc }
 
 - `source` — `none | ntp | ptp`. Reflects which time source is currently authoritative.
 - **`ntp`** — `{ enabled, state?, last_sync_at? }`. `state ∈ locked | free_running | holdover | unknown`. Populated from `org.freedesktop.timedate1`.
-- **`ptp`** — `{ enabled, interface?, offset_ns?, rms_ns?, state?, last_sync_at?, role? }`. No active PTP probe is implemented yet in v1.0; the field reflects configuration only. Populating it is reserved for a future probe.
+- **`ptp`** — `{ enabled, interface?, offset_ns?, rms_ns?, state?, last_sync_at?, role? }`. No active PTP probe is implemented yet; the field reflects configuration only. Populating it is reserved for a future probe.
 - **`rtc`** — `{ enabled, hctosys?, voltage_mv?, drift_sec? }`. When `enable_rtc: true` and `rtc_device` is readable, the probe reports:
   - `hctosys` — whether the kernel copied RTC → system clock at boot (from `/sys/class/rtc/<rtc>/hctosys`).
   - `voltage_mv` — backup battery voltage in millivolts (from `voltage`/`voltage_now` sysfs node, μV converted).
@@ -211,7 +227,7 @@ TimeSyncStatus { overall, source, ntp, ptp, rtc }
 
 Polling is decoupled from `collect_interval_sec` via `time_sync_interval_sec` (default 300 s) to avoid socket-activating `systemd-timedated` on every cycle.
 
-> The `rtc` member is present at runtime but is not yet listed in the v1.0 schema's `time_sync.properties`; it is accepted via `additionalProperties: true`. It will be formalized in the schema in a future additive update.
+> The `rtc` member is present at runtime but is not yet listed in the schema's `time_sync.properties`; it is accepted because the top-level object does not set `additionalProperties: false`. It will be formalized in the schema in a future additive update.
 
 ### 6.6 `update`
 
@@ -240,7 +256,7 @@ JournalStatus { overall, error_count, recent_errors[] }
 - Severity: `ok` when `error_count == 0`; `warn`/`crit` thresholds are policy-driven.
 - Scan budget bounded by `log_excerpt.scan_timeout_ms` (default 3000) to protect cycle latency.
 
-The D-Bus method `edge.health.Manager.GetRecentLogs` serves the *same* cached buffer with zero `sd_journal_open()` overhead.
+The daemon caches the most recent errors in memory; the D-Bus method `edge.health.Manager.GetRecentLogs` serves that cached buffer with zero `sd_journal_open()` overhead.
 
 ### 6.8 `crash`
 
@@ -256,16 +272,17 @@ CrashArtifact { name, size_bytes, mtime? }
 - `acknowledged` — `true` when an external actor (operator tool or future `AcknowledgeCrash()` D-Bus method) has confirmed the fingerprint. The probe itself is **read-only**: it never writes the acknowledgement state.
 - Daemon emits `HealthAlarm(component="crash", message=…, severity="crit")` once per new unacknowledged fingerprint and re-arms when pstore is cleared.
 
-> `crash` is defined in the schema but intentionally omitted from the top-level `required[]` to remain compatible with v1.0 validators predating PR #35. Promotion to required is planned for v1.1.
+> `crash` is defined in the schema but intentionally kept **out** of the top-level `required[]` so that validators predating the crash probe continue to accept snapshots. Promotion to required is deferred to a future version. The daemon always emits `crash` at runtime.
 
 ### 6.9 `summary`
 
 ```
-SnapshotSummary { severity, reasons[], notes? }
+SnapshotSummary { severity, reasons[], domains?, notes? }
 ```
 
 - `severity` — worst-wins aggregate (§4).
 - `reasons[]` — list of stable codes (§5).
+- `domains` — optional per-domain severity map keyed by `boot`, `services`, `resources`, `time_sync`, `update`, `journal`, `crash`; each value is a `severity` (§4). Lets a consumer see which domain drove the top line — or which domain went blind — without re-deriving it.
 - `notes` — optional free-form human commentary.
 
 ## 7. Sibling D-Bus contract
@@ -288,12 +305,19 @@ D-Bus is not required for snapshot consumption — file readers see the same dat
 - **No re-typing** of an existing field without a major bump.
 - **Breaking changes** (removing a field, narrowing an enum, changing a required-status) require v2.0.
 
-Planned for **v1.1** (additive, no breakage):
+Delivered in **v1.1** (all additive except the storage/thermal required-field
+relaxation, see §What's new):
 
-- Formalize `time_sync.rtc` in the schema properties.
-- Formalize `cycle` at the top level.
+- `unavailable` / `stale` severity states with the visibility-aware roll-up (§4).
+- Per-section `collected_at` / `stale` freshness on subsystem objects.
+- Per-domain severity (`summary.domains`).
+- `storage[].available` / `thermal[].available`, with `used_pct`/`avail_mb`/`temp_c` relaxed to optional.
+- Populated `network[].speed_mbps` / `duplex` via ethtool netlink.
+
+Still deferred (future additive updates):
+
+- Formalize `time_sync.rtc` and top-level `cycle` in the schema properties (both accepted at runtime today).
 - Promote `crash` into top-level `required[]`.
-- Add `collected_at` staleness timestamps to `TimeSyncStatus` and `UpdateStatus`.
 
 ## 9. Validation
 
@@ -301,4 +325,4 @@ Planned for **v1.1** (additive, no breakage):
 python3 scripts/validate_schema.py /run/health/state.json
 ```
 
-The validator uses `jsonschema` with Draft 2020-12 and defaults to `schemas/edge.health.state.v1.0.json`.
+The validator uses `jsonschema` with Draft 2020-12 and defaults to `schemas/edge.health.state.v1.1.json`. Pass `--schema schemas/edge.health.state.v1.0.json` to check backward compatibility against the v1.0 contract.

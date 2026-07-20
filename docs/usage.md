@@ -1,6 +1,6 @@
 # Usage Guide
 
-This document covers running and operating `edge-healthd` in production. For build instructions and contributor workflow, see [`development.md`](development.md). For the snapshot schema contract, see [`edge.health.state.v1.0.md`](edge.health.state.v1.0.md).
+This document covers running and operating `edge-healthd` in production. For build instructions and contributor workflow, see [`development.md`](development.md). For the snapshot schema contract, see [`edge.health.state.v1.1.md`](edge.health.state.v1.1.md).
 
 ## Contents
 
@@ -97,12 +97,12 @@ python3 scripts/validate_schema.py /run/health/state.json
 
 ## Snapshot output
 
-Written to `/run/health/state.json` (tmpfs) every collection cycle. Schema version `1.0` — see [`schemas/edge.health.state.v1.0.json`](../schemas/edge.health.state.v1.0.json) and the [field reference](edge.health.state.v1.0.md).
+Written to `/run/health/state.json` (tmpfs) every collection cycle. Schema version `1.1` — see [`schemas/edge.health.state.v1.1.json`](../schemas/edge.health.state.v1.1.json) and the [field reference](edge.health.state.v1.1.md).
 
 ```json
 {
   "schema": "edge.health.state",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "generated_at": "2026-05-11T10:34:00Z",
   "cycle": 4218,
   "device": {
@@ -123,10 +123,11 @@ Written to `/run/health/state.json` (tmpfs) every collection cycle. Schema versi
   "resources": {
     "cpu": { "load1": 0.0, "load5": 0.0, "load15": 0.05 },
     "memory": { "mem_total_mb": 7923, "mem_used_mb": 201, "swap_used_mb": 0 },
-    "storage": [{ "mount": "/", "fs": "ext4", "used_pct": 41, "avail_mb": 1623 }],
+    "storage": [{ "mount": "/", "fs": "ext4", "available": true, "used_pct": 41, "avail_mb": 1623 }],
+    "thermal": [{ "sensor": "cpu-thermal", "available": true, "temp_c": 47.8 }],
     "network": [
-      { "ifname": "wlan0", "link": "up", "ip": "192.168.28.50", "rx_bytes": 317020 },
-      { "ifname": "br0",   "link": "up", "ip": "192.168.0.82",  "rx_bytes": 34168369 }
+      { "ifname": "eth0",  "link": "up", "ip": "10.0.0.20", "carrier": true, "speed_mbps": 1000, "duplex": "full", "rx_bytes": 34168369 },
+      { "ifname": "wlan0", "link": "up", "ip": "10.0.0.21", "rx_bytes": 317020 }
     ]
   },
   "time_sync": {
@@ -146,8 +147,12 @@ Written to `/run/health/state.json` (tmpfs) every collection cycle. Schema versi
     }
   },
   "journal": { "overall": "ok", "error_count": 0, "recent_errors": [] },
-  "crash": { "present": false, "artifact_count": 0, "acknowledged": false },
-  "summary": { "severity": "ok", "reasons": [] }
+  "crash": { "present": false, "artifact_count": 0, "artifacts": [], "acknowledged": false },
+  "summary": {
+    "severity": "ok",
+    "reasons": [],
+    "domains": { "boot": "ok", "services": "ok", "resources": "ok", "time_sync": "ok", "update": "ok", "journal": "ok", "crash": "ok" }
+  }
 }
 ```
 
@@ -158,9 +163,11 @@ Written to `/run/health/state.json` (tmpfs) every collection cycle. Schema versi
 | 🟢 `ok` | All monitored subsystems healthy |
 | 🟡 `warn` | Degraded — service restarting, disk > 80 %, NTP unlocked, recent journal errors |
 | 🔴 `crit` | Action required — service failed, disk > 95 %, boot loop, kernel panic detected |
-| ⚪ `unknown` | Probe could not collect data (D-Bus unavailable, etc.) |
+| 🟠 `unavailable` | A monitored element could not be read this cycle — unmounted path, dead thermal sensor |
+| 🔵 `stale` | A section was collected before but is now past its freshness window |
+| ⚪ `unknown` | Never observed — warm-up, or an absent optional dependency (D-Bus/RAUC/timedated) |
 
-The top-level `summary.severity` is the worst-wins aggregate across subsystems. `summary.reasons` lists which probes drove the result, as stable machine-readable codes (see [schema contract §5](edge.health.state.v1.0.md#5-reason-codes-summaryreasons)).
+The top-level `summary.severity` is the worst-wins aggregate across subsystems, ranked `unknown < ok < stale < unavailable < warn < crit` — so warm-up never alarms, a loss of visibility surfaces above `ok`, and a real health signal still dominates. `summary.reasons` lists which probes drove the result as stable machine-readable codes, and `summary.domains` gives each domain's severity (see [schema contract §4–§5](edge.health.state.v1.1.md#4-severity-model)).
 
 ## D-Bus interface
 
@@ -172,9 +179,10 @@ The top-level `summary.severity` is the worst-wins aggregate across subsystems. 
 
 | Member | Kind | Signature | Purpose |
 |---|---|---|---|
-| `OverallSeverity` | property (emits-change) | `s` | `"ok"` / `"warn"` / `"crit"` / `"unknown"` |
+| `OverallSeverity` | property (emits-change) | `s` | `"ok"` / `"warn"` / `"crit"` / `"unknown"` / `"unavailable"` / `"stale"` |
 | `TriggerSnapshot` | method | `() → b` | Wake collection immediately; `false` if rate-limited |
 | `GetRecentLogs` | method | `(u max_lines) → as` | Cached journal errors — zero `sd_journal_open()` overhead |
+| `AcknowledgeCrash` | method | `(s fingerprint) → b` | Acknowledge a crash fingerprint; clears the `crash` alarm. `false` if the fingerprint is stale/unknown |
 | `HealthAlarm` | signal | `(s component, s message, s severity)` | Fired on severity degradation or new crash artifact |
 
 D-Bus policy: [`config/edge-healthd-dbus.conf`](../config/edge-healthd-dbus.conf). Introspection XML: [`dbus/edge-health-manager.xml`](../dbus/edge-health-manager.xml).
@@ -233,4 +241,4 @@ The persistent boot-failure counter lives at `/data/edge/health/boot_state.json`
 - **Watchdog.** `WatchdogSec=150` — long enough to absorb a slow NTP cycle (~78 ms burst) without false reset. If you change `collect_interval_sec` above ~75 s, increase `WatchdogSec` proportionally.
 - **First boot.** `boot_ok` flips to `true` only after the first successful collection cycle completes and `sd_notify(READY=1)` has fired.
 
-For benchmark methodology and historical traces, see [`performance-profile.md`](performance-profile.md). For the snapshot schema contract and evolution rules, see [`edge.health.state.v1.0.md`](edge.health.state.v1.0.md).
+For benchmark methodology and historical traces, see [`performance-profile.md`](performance-profile.md). For the snapshot schema contract and evolution rules, see [`edge.health.state.v1.1.md`](edge.health.state.v1.1.md).
