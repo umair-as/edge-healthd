@@ -58,6 +58,86 @@ TEST_CASE("Aggregator evaluates memory severity", "[aggregator]") {
     }
 }
 
+TEST_CASE("Aggregator: unreadable storage/thermal is unavailable, not ok", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    ResourcesStatus resources;
+    resources.memory.mem_total_mb = 1000;
+    resources.memory.mem_used_mb = 100; // healthy, so it doesn't mask the test
+
+    SECTION("Unmounted/unreadable mount -> Unavailable (R2), not Ok") {
+        StorageMount m;
+        m.mount = "/data";
+        m.available = false; // statvfs failed
+        resources.storage.push_back(m);
+        CHECK(agg.evaluate_resources(resources) == Severity::Unavailable);
+    }
+
+    SECTION("Available mount at healthy usage stays Ok") {
+        StorageMount m;
+        m.mount = "/";
+        m.available = true;
+        m.used_pct = uint8_t{10};
+        m.avail_mb = uint64_t{5000};
+        resources.storage.push_back(m);
+        CHECK(agg.evaluate_resources(resources) == Severity::Ok);
+    }
+
+    SECTION("A real crit mount dominates an unavailable one") {
+        StorageMount bad;
+        bad.mount = "/data";
+        bad.available = false;
+        StorageMount full;
+        full.mount = "/";
+        full.available = true;
+        full.used_pct = uint8_t{99}; // crit
+        resources.storage.push_back(bad);
+        resources.storage.push_back(full);
+        CHECK(agg.evaluate_resources(resources) == Severity::Crit);
+    }
+
+    SECTION("Dead thermal sensor -> Unavailable (R3), not Ok") {
+        ThermalSensor s;
+        s.sensor = "cpu-thermal";
+        s.available = false; // temp read failed
+        resources.thermal.push_back(s);
+        CHECK(agg.evaluate_resources(resources) == Severity::Unavailable);
+    }
+}
+
+TEST_CASE("Aggregator: stale section surfaces as Stale; never-observed stays Unknown", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    SECTION("A stale but otherwise-ok section raises overall to Stale") {
+        ResourcesStatus resources;
+        resources.memory.mem_total_mb = 1000;
+        resources.memory.mem_used_mb = 100; // healthy
+        resources.freshness.stale = true;   // data past its freshness window
+        auto state = agg.aggregate({}, {}, {}, resources, {}, {}, {}, {});
+        CHECK(state.summary.domains.resources == Severity::Stale);
+        CHECK(state.summary.severity == Severity::Stale);
+    }
+
+    SECTION("A stale section retains a worse last-known severity (no downgrade)") {
+        ResourcesStatus resources;
+        resources.memory.mem_total_mb = 1000;
+        resources.memory.mem_used_mb = 990; // crit
+        resources.freshness.stale = true;
+        auto state = agg.aggregate({}, {}, {}, resources, {}, {}, {}, {});
+        CHECK(state.summary.domains.resources == Severity::Crit); // crit > stale
+    }
+
+    SECTION("Never-observed sections (not stale) keep overall from alarming (warm-up)") {
+        // All sections default: overall Unknown, freshness.stale=false.
+        auto state = agg.aggregate({}, {}, {}, {}, {}, {}, {}, {});
+        CHECK(state.summary.severity != Severity::Warn);
+        CHECK(state.summary.severity != Severity::Crit);
+        CHECK(state.summary.severity != Severity::Stale);
+    }
+}
+
 TEST_CASE("Aggregator computes overall severity", "[aggregator]") {
     auto config = Config::defaults();
     SnapshotAggregator agg(config);
@@ -194,6 +274,11 @@ TEST_CASE("Aggregator adds crash reasons for current-boot panic", "[aggregator]"
     CHECK(has_kernel_panic);
     CHECK(has_pstore_present);
     CHECK(state.summary.severity == Severity::Crit);
+
+    // Per-domain severity surfaces the crash domain without masking the others.
+    CHECK(state.summary.domains.crash == Severity::Crit);
+    CHECK(state.summary.domains.boot == Severity::Ok);
+    CHECK(state.summary.domains.resources == Severity::Ok);
 }
 
 TEST_CASE("Aggregator: prior-boot panic is historical, not crit", "[aggregator]") {

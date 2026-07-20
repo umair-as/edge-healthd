@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // edge-healthd: Core type definitions
-// These types map directly to the edge.health.state JSON schema (v1.0)
+// These types map directly to the edge.health.state JSON schema (v1.1)
 
 #pragma once
 
@@ -16,7 +16,12 @@ namespace edge {
 // Enumerations (match JSON schema enums exactly)
 // -----------------------------------------------------------------------------
 
-enum class Severity { Ok, Warn, Crit, Unknown };
+// Health/observability severity. ok/warn/crit are health states; unknown means
+// "never observed" (warm-up or absent dependency — must stay below ok so a fresh
+// boot doesn't alarm); stale means "observed before, now past its freshness
+// window"; unavailable means "a monitored element could not be read this cycle".
+// Roll-up ranking (worst_of): unknown < ok < stale < unavailable < warn < crit.
+enum class Severity { Ok, Warn, Crit, Unknown, Unavailable, Stale };
 
 enum class ServiceState {
     Active,
@@ -43,10 +48,12 @@ enum class UpdateResult { Success, Failed, Unknown };
 
 [[nodiscard]] constexpr std::string_view to_string(Severity s) noexcept {
     switch (s) {
-        case Severity::Ok:      return "ok";
-        case Severity::Warn:    return "warn";
-        case Severity::Crit:    return "crit";
-        case Severity::Unknown: return "unknown";
+        case Severity::Ok:          return "ok";
+        case Severity::Warn:        return "warn";
+        case Severity::Crit:        return "crit";
+        case Severity::Unknown:     return "unknown";
+        case Severity::Unavailable: return "unavailable";
+        case Severity::Stale:       return "stale";
     }
     return "unknown";
 }
@@ -128,7 +135,18 @@ struct DeviceInfo {
     OsInfo os;
 };
 
+// Per-section observability metadata (M2). collected_at is the wall-clock time
+// of the last successful collection (nullopt until the first success — i.e. a
+// never-observed section stays severity unknown, not stale). stale is set when a
+// previously-collected section is now past its freshness window; the aggregator
+// then raises it to at least Severity::Stale.
+struct SectionFreshness {
+    std::optional<std::chrono::system_clock::time_point> collected_at;
+    bool stale = false;
+};
+
 struct BootStatus {
+    SectionFreshness freshness;
     std::string boot_id;       // systemd boot ID (UUID)
     std::chrono::system_clock::time_point last_boot_at;
     std::chrono::seconds uptime;
@@ -149,6 +167,7 @@ struct ServiceUnit {
 };
 
 struct ServicesStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     std::vector<ServiceUnit> units;
 };
@@ -168,13 +187,19 @@ struct MemoryUsage {
 struct StorageMount {
     std::string mount;
     std::string fs;
-    uint8_t used_pct = 0;
-    uint64_t avail_mb = 0;
+    // available=false when statvfs failed (unmounted / missing path) or reported
+    // no capacity; used_pct/avail_mb are then omitted rather than a lying 0.
+    bool available = true;
+    std::optional<uint8_t>  used_pct;
+    std::optional<uint64_t> avail_mb;
 };
 
 struct ThermalSensor {
     std::string sensor;
-    double temp_c = 0.0;
+    // available=false when the temp read failed or was out of plausible range;
+    // temp_c is then omitted rather than a misleading 0 °C.
+    bool available = true;
+    std::optional<double> temp_c;
 };
 
 struct NetworkInterface {
@@ -207,6 +232,7 @@ struct NetworkInterface {
 };
 
 struct ResourcesStatus {
+    SectionFreshness freshness;
     uint32_t sample_window_sec = 60;
     CpuLoad cpu;
     MemoryUsage memory;
@@ -239,6 +265,7 @@ struct RtcStatus {
 };
 
 struct TimeSyncStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     TimeSyncSource source = TimeSyncSource::None;
     NtpStatus ntp;
@@ -254,12 +281,14 @@ struct LastUpdate {
 };
 
 struct UpdateStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     std::optional<std::string> active_slot;
     std::optional<LastUpdate> last_update;
 };
 
 struct JournalStatus {
+    SectionFreshness freshness;
     Severity overall = Severity::Unknown;
     uint32_t error_count = 0;               // entries collected in scan window
     std::vector<std::string> recent_errors; // newest first, capped by config
@@ -276,6 +305,7 @@ struct CrashArtifact {
 };
 
 struct CrashStatus {
+    SectionFreshness freshness;
     bool present = false;              // any pstore artifact exists (all kinds)
     std::optional<std::string> source; // "pstore"
     std::optional<std::chrono::system_clock::time_point> last_panic_at;
@@ -291,8 +321,21 @@ struct CrashStatus {
     bool panic_current_boot = false;
 };
 
+// Per-domain severity, exposed so the top-line roll-up can't hide a single
+// newly-degraded (or newly-blind) domain. Mirrors the seven aggregated probes.
+struct DomainSeverities {
+    Severity boot      = Severity::Unknown;
+    Severity services  = Severity::Unknown;
+    Severity resources = Severity::Unknown;
+    Severity time_sync = Severity::Unknown;
+    Severity update    = Severity::Unknown;
+    Severity journal   = Severity::Unknown;
+    Severity crash     = Severity::Unknown;
+};
+
 struct SnapshotSummary {
     Severity severity = Severity::Unknown;
+    DomainSeverities domains;
     std::vector<std::string> reasons{"initial"};
     std::optional<std::string> notes;
 };
@@ -304,7 +347,7 @@ struct SnapshotSummary {
 struct SnapshotState {
     // Schema metadata
     static constexpr std::string_view schema = "edge.health.state";
-    static constexpr std::string_view schema_version = "1.0";
+    static constexpr std::string_view schema_version = "1.1";
     std::chrono::system_clock::time_point generated_at;
     uint64_t cycle = 0;  // Monotonic counter incremented on every collection cycle.
                          // Consumers can use this to confirm the daemon is collecting

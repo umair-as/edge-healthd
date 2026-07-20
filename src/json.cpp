@@ -32,6 +32,13 @@ std::string format_time(const std::chrono::system_clock::time_point& tp) {
     return oss.str();
 }
 
+// Emit per-section observability metadata (M2): collected_at when the section
+// has ever been collected, and the stale flag.
+void emit_freshness(nlohmann::json& j, const SectionFreshness& f) {
+    if (f.collected_at) j["collected_at"] = format_time(*f.collected_at);
+    j["stale"] = f.stale;
+}
+
 } // namespace
 
 void to_json(nlohmann::json& j, const OsInfo& os) {
@@ -65,6 +72,8 @@ void to_json(nlohmann::json& j, const BootStatus& boot) {
     if (boot.last_reboot_reason) {
         j["last_reboot_reason"] = *boot.last_reboot_reason;
     }
+
+    emit_freshness(j, boot.freshness);
 }
 
 void to_json(nlohmann::json& j, const ServiceUnit& unit) {
@@ -94,6 +103,8 @@ void to_json(nlohmann::json& j, const ServicesStatus& services) {
         {"overall", std::string(edge::to_string(services.overall))},
         {"units", services.units}
     };
+
+    emit_freshness(j, services.freshness);
 }
 
 void to_json(nlohmann::json& j, const CpuLoad& cpu) {
@@ -116,16 +127,19 @@ void to_json(nlohmann::json& j, const StorageMount& mount) {
     j = nlohmann::json{
         {"mount", mount.mount},
         {"fs", mount.fs},
-        {"used_pct", mount.used_pct},
-        {"avail_mb", mount.avail_mb}
+        {"available", mount.available}
     };
+    // Omit numeric fields when unavailable rather than emit a misleading 0.
+    if (mount.used_pct) j["used_pct"] = *mount.used_pct;
+    if (mount.avail_mb) j["avail_mb"] = *mount.avail_mb;
 }
 
 void to_json(nlohmann::json& j, const ThermalSensor& sensor) {
     j = nlohmann::json{
         {"sensor", sensor.sensor},
-        {"temp_c", finite_or_zero(sensor.temp_c)}
+        {"available", sensor.available}
     };
+    if (sensor.temp_c) j["temp_c"] = finite_or_zero(*sensor.temp_c);
 }
 
 void to_json(nlohmann::json& j, const NetworkInterface& iface) {
@@ -186,6 +200,8 @@ void to_json(nlohmann::json& j, const ResourcesStatus& resources) {
         {"thermal", resources.thermal},
         {"network", resources.network}
     };
+
+    emit_freshness(j, resources.freshness);
 }
 
 void to_json(nlohmann::json& j, const NtpStatus& ntp) {
@@ -246,6 +262,8 @@ void to_json(nlohmann::json& j, const TimeSyncStatus& time_sync) {
         {"ptp", time_sync.ptp},
         {"rtc", time_sync.rtc}
     };
+
+    emit_freshness(j, time_sync.freshness);
 }
 
 void to_json(nlohmann::json& j, const LastUpdate& update) {
@@ -273,6 +291,8 @@ void to_json(nlohmann::json& j, const UpdateStatus& update) {
     if (update.last_update) {
         j["last_update"] = *update.last_update;
     }
+
+    emit_freshness(j, update.freshness);
 }
 
 void to_json(nlohmann::json& j, const JournalStatus& journal) {
@@ -281,6 +301,8 @@ void to_json(nlohmann::json& j, const JournalStatus& journal) {
         {"error_count", journal.error_count},
         {"recent_errors", journal.recent_errors}
     };
+
+    emit_freshness(j, journal.freshness);
 }
 
 void to_json(nlohmann::json& j, const CrashArtifact& artifact) {
@@ -314,11 +336,23 @@ void to_json(nlohmann::json& j, const CrashStatus& crash) {
     if (crash.fingerprint) {
         j["fingerprint"] = *crash.fingerprint;
     }
+
+    emit_freshness(j, crash.freshness);
 }
 
 void to_json(nlohmann::json& j, const SnapshotSummary& summary) {
+    auto sev = [](Severity s) { return std::string(edge::to_string(s)); };
     j = nlohmann::json{
-        {"severity", std::string(edge::to_string(summary.severity))},
+        {"severity", sev(summary.severity)},
+        {"domains", {
+            {"boot",      sev(summary.domains.boot)},
+            {"services",  sev(summary.domains.services)},
+            {"resources", sev(summary.domains.resources)},
+            {"time_sync", sev(summary.domains.time_sync)},
+            {"update",    sev(summary.domains.update)},
+            {"journal",   sev(summary.domains.journal)},
+            {"crash",     sev(summary.domains.crash)}
+        }},
         {"reasons", summary.reasons}
     };
 

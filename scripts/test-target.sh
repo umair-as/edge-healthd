@@ -48,7 +48,15 @@ snap()    { jq -r "$1" "$SNAPSHOT" 2>/dev/null; }
 snap_int(){ jq    "$1" "$SNAPSHOT" 2>/dev/null; }
 
 trigger_and_wait() {
-    busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" TriggerSnapshot &>/dev/null || true
+    # TriggerSnapshot is rate-limited (trigger_min_interval_sec, default 5s). If a
+    # prior section triggered recently this call returns "b false" and no cycle
+    # runs, so retry with spacing past the rate-limit window until it takes.
+    local i r
+    for i in 1 2 3 4; do
+        r=$(busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" TriggerSnapshot 2>/dev/null || echo)
+        [[ "$r" =~ "b true" ]] && { sleep 3; return 0; }
+        sleep 6
+    done
     sleep 3
 }
 
@@ -90,7 +98,7 @@ AGE_S=$(( $(date +%s) - $(date -r "$SNAPSHOT" +%s) ))
 section "3. Schema and top-level fields"
 
 [[ "$(snap '.schema')"         == "edge.health.state" ]] && pass "schema name"    || fail "schema name wrong: $(snap '.schema')"
-[[ "$(snap '.schema_version')" == "1.0"               ]] && pass "schema version" || fail "schema_version wrong: $(snap '.schema_version')"
+[[ "$(snap '.schema_version')" == "1.1"               ]] && pass "schema version" || fail "schema_version wrong: $(snap '.schema_version')"
 
 for field in generated_at cycle device boot services resources time_sync update journal summary; do
     jq -e "has(\"$field\")" "$SNAPSHOT" &>/dev/null \
@@ -216,7 +224,7 @@ if have busctl; then
         || fail "D-Bus service $DBUS_DEST not found"
 
     SEV=$(busctl get-property "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" OverallSeverity 2>/dev/null | awk '{print $2}' | tr -d '"')
-    [[ "$SEV" =~ ^(ok|warn|crit|unknown)$ ]] && pass "OverallSeverity: $SEV" || fail "OverallSeverity invalid: '$SEV'"
+    [[ "$SEV" =~ ^(ok|warn|crit|unknown|stale|unavailable)$ ]] && pass "OverallSeverity: $SEV" || fail "OverallSeverity invalid: '$SEV'"
 
     TR=$(busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" TriggerSnapshot 2>/dev/null || echo "error")
     [[ "$TR" =~ "b true" ]] && pass "TriggerSnapshot returned true" || fail "TriggerSnapshot failed: $TR"
@@ -258,7 +266,7 @@ J_COUNT=$(snap_int '.journal.error_count')
 section "13. Summary"
 
 S_SEV=$(snap '.summary.severity')
-[[ "$S_SEV" =~ ^(ok|warn|crit|unknown)$ ]] && pass "summary.severity: $S_SEV" || fail "summary.severity invalid"
+[[ "$S_SEV" =~ ^(ok|warn|crit|unknown|stale|unavailable)$ ]] && pass "summary.severity: $S_SEV" || fail "summary.severity invalid"
 REASONS_TYPE=$(jq '.summary.reasons | type' "$SNAPSHOT")
 [[ "$REASONS_TYPE" == '"array"' ]] \
     && pass "summary.reasons is array ($(snap_int '.summary.reasons|length') entries)" \
@@ -338,8 +346,8 @@ else
     fi
     mkdir -p "$FIO_DIR"
 
-    AVAIL_BEFORE=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .avail_mb" "$SNAPSHOT")
-    PCT_BEFORE=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .used_pct" "$SNAPSHOT")
+    AVAIL_BEFORE=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .avail_mb // 0" "$SNAPSHOT")
+    PCT_BEFORE=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .used_pct // 0" "$SNAPSHOT")
     pass "baseline [$MOUNT_KEY] avail_mb=$AVAIL_BEFORE used_pct=${PCT_BEFORE}%"
 
     # Write 10% of available space, min 512MB, max 4096MB — ensures a visible
@@ -353,8 +361,8 @@ else
 
     trigger_and_wait
 
-    AVAIL_AFTER=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .avail_mb" "$SNAPSHOT")
-    PCT_AFTER=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .used_pct" "$SNAPSHOT")
+    AVAIL_AFTER=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .avail_mb // 0" "$SNAPSHOT")
+    PCT_AFTER=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .used_pct // 0" "$SNAPSHOT")
     pass "after fio [$MOUNT_KEY] avail_mb=$AVAIL_AFTER used_pct=${PCT_AFTER}%"
 
     # Expect at least 80% of written size to show as consumed (direct I/O, no cache)
@@ -369,7 +377,7 @@ else
     # Cleanup
     rm -rf "$FIO_DIR"
     trigger_and_wait
-    AVAIL_CLEAN=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .avail_mb" "$SNAPSHOT")
+    AVAIL_CLEAN=$(jq "[.resources.storage[] | select(.mount == \"$MOUNT_KEY\")] | first | .avail_mb // 0" "$SNAPSHOT")
     pass "after cleanup avail_mb=$AVAIL_CLEAN"
 fi
 

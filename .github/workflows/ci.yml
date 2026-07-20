@@ -68,3 +68,11 @@ jobs:
 
       - name: Validate snapshot against schema
         run: python3 scripts/validate_schema.py /tmp/edge-healthd/state.json
+
+      - name: Validate all mock fixtures against schema
+        run: |
+          set -e
+          for f in web/mock/sample_states/*.json; do
+            echo "validating $f"
+            python3 scripts/validate_schema.py "$f"
+          done

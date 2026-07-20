@@ -40,16 +40,22 @@ namespace {
     void parse_rtnl_stats(struct nlattr* attr, NetlinkInterfaceStats& stats) {
         switch (mnl_attr_get_type(attr)) {
         case IFLA_STATS64:
-            if (mnl_attr_validate(attr, MNL_TYPE_UNSPEC) >= 0) {
-                const auto* s = static_cast<const struct rtnl_link_stats64*>(mnl_attr_get_payload(attr));
-                stats.rx_bytes = s->rx_bytes;
-                stats.tx_bytes = s->tx_bytes;
-                stats.rx_packets = s->rx_packets;
-                stats.tx_packets = s->tx_packets;
-                stats.rx_errors = s->rx_errors;
-                stats.tx_errors = s->tx_errors;
-                stats.rx_dropped = s->rx_dropped;
-                stats.tx_dropped = s->tx_dropped;
+            if (mnl_attr_validate2(attr, MNL_TYPE_UNSPEC,
+                                   sizeof(struct rtnl_link_stats64)) >= 0) {
+                // The IFLA_STATS64 payload is not guaranteed 8-byte aligned, so
+                // dereferencing a reinterpreted rtnl_link_stats64* is UB (UBSan
+                // "misaligned address"; can fault on strict-alignment RISC-V/ARM).
+                // Copy the bytes out into an aligned local before reading fields.
+                struct rtnl_link_stats64 s64;
+                std::memcpy(&s64, mnl_attr_get_payload(attr), sizeof(s64));
+                stats.rx_bytes = s64.rx_bytes;
+                stats.tx_bytes = s64.tx_bytes;
+                stats.rx_packets = s64.rx_packets;
+                stats.tx_packets = s64.tx_packets;
+                stats.rx_errors = s64.rx_errors;
+                stats.tx_errors = s64.tx_errors;
+                stats.rx_dropped = s64.rx_dropped;
+                stats.tx_dropped = s64.tx_dropped;
             }
             break;
         case IFLA_IFNAME:

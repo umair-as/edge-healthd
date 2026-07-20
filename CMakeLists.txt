@@ -161,6 +161,7 @@ add_library(edge-snapshot-core STATIC
     src/probes_dbus.cpp
     src/journal.cpp
     src/netlink_monitor.cpp
+    src/ethtool_link.cpp
     src/aggregator.cpp
     src/writer.cpp
     src/json.cpp
@@ -248,6 +249,7 @@ if(EDGE_BUILD_TESTS)
         tests/test_writer.cpp
         tests/test_json.cpp
         tests/test_journal.cpp
+        tests/test_ethtool_link.cpp
         tests/test_serialization_safety.cpp
         tests/test_daemon_lifecycle.cpp
         # daemon.cpp is not part of edge-snapshot-core (it lives in the

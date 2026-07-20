@@ -42,6 +42,25 @@ SnapshotState SnapshotAggregator::aggregate(
     auto journal_sev = evaluate_journal(journal);
     auto crash_sev = evaluate_crash(crash);
 
+    // A stale section (collected before, now past its freshness window) is raised
+    // to at least Severity::Stale so loss of freshness surfaces in the roll-up.
+    // worst_of preserves a retained warn/crit when the last-known value was worse,
+    // and a never-observed section is not marked stale (stays unknown → warm-up
+    // safe).
+    if (boot.freshness.stale)      boot_sev      = worst_of({boot_sev, Severity::Stale});
+    if (services.freshness.stale)  services_sev  = worst_of({services_sev, Severity::Stale});
+    if (resources.freshness.stale) resources_sev = worst_of({resources_sev, Severity::Stale});
+    if (time_sync.freshness.stale) time_sync_sev = worst_of({time_sync_sev, Severity::Stale});
+    if (update.freshness.stale)    update_sev    = worst_of({update_sev, Severity::Stale});
+    if (journal.freshness.stale)   journal_sev   = worst_of({journal_sev, Severity::Stale});
+    if (crash.freshness.stale)     crash_sev     = worst_of({crash_sev, Severity::Stale});
+
+    // Expose per-domain severity so the roll-up can't mask a single degraded
+    // (or blind) domain.
+    state.summary.domains = DomainSeverities{
+        boot_sev, services_sev, resources_sev,
+        time_sync_sev, update_sev, journal_sev, crash_sev};
+
     // Compute overall
     state.summary.severity = compute_overall(
         boot_sev, services_sev, resources_sev, time_sync_sev, update_sev, journal_sev, crash_sev);
@@ -254,9 +273,12 @@ Severity SnapshotAggregator::evaluate_disk(const std::vector<StorageMount>& stor
     Severity worst = Severity::Ok;
 
     for (const auto& mount : storage) {
-        if (mount.used_pct >= config_.thresholds.disk_used_crit) {
+        if (!mount.available || !mount.used_pct) {
+            // Can't read a monitored mount → loss of observability, not healthy.
+            worst = worst_of({worst, Severity::Unavailable});
+        } else if (*mount.used_pct >= config_.thresholds.disk_used_crit) {
             worst = worst_of({worst, Severity::Crit});
-        } else if (mount.used_pct >= config_.thresholds.disk_used_warn) {
+        } else if (*mount.used_pct >= config_.thresholds.disk_used_warn) {
             worst = worst_of({worst, Severity::Warn});
         }
     }
@@ -268,9 +290,12 @@ Severity SnapshotAggregator::evaluate_thermal(const std::vector<ThermalSensor>& 
     Severity worst = Severity::Ok;
 
     for (const auto& sensor : thermal) {
-        if (sensor.temp_c >= config_.thresholds.temp_crit_c) {
+        if (!sensor.available || !sensor.temp_c) {
+            // Dead/unreadable sensor → unavailable, not a healthy 0 °C.
+            worst = worst_of({worst, Severity::Unavailable});
+        } else if (*sensor.temp_c >= config_.thresholds.temp_crit_c) {
             worst = worst_of({worst, Severity::Crit});
-        } else if (sensor.temp_c >= config_.thresholds.temp_warn_c) {
+        } else if (*sensor.temp_c >= config_.thresholds.temp_warn_c) {
             worst = worst_of({worst, Severity::Warn});
         }
     }
@@ -285,10 +310,17 @@ Severity SnapshotAggregator::worst_of(std::initializer_list<Severity> severities
     for (auto s : severities) {
         int rank = 0;
         switch (s) {
-            case Severity::Unknown: rank = 0; break;
-            case Severity::Ok: rank = 1; break;
-            case Severity::Warn: rank = 2; break;
-            case Severity::Crit: rank = 3; break;
+            // unknown (never observed) stays below ok so a warm-up / absent
+            // dependency never raises the roll-up. stale and unavailable are
+            // loss-of-observability signals that DO surface (above ok), but rank
+            // below warn/crit so a real health signal — including a stale
+            // section's retained last-known warn/crit — still dominates.
+            case Severity::Unknown:     rank = 0; break;
+            case Severity::Ok:          rank = 1; break;
+            case Severity::Stale:       rank = 2; break;
+            case Severity::Unavailable: rank = 3; break;
+            case Severity::Warn:        rank = 4; break;
+            case Severity::Crit:        rank = 5; break;
         }
         if (rank > worst_rank) {
             worst_rank = rank;

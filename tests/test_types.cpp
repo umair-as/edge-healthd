@@ -36,7 +36,7 @@ TEST_CASE("TimeSyncSource to_string", "[types]") {
 
 TEST_CASE("SnapshotState has correct schema", "[types]") {
     CHECK(SnapshotState::schema == "edge.health.state");
-    CHECK(SnapshotState::schema_version == "1.0");
+    CHECK(SnapshotState::schema_version == "1.1");
 }
 
 TEST_CASE("Default values are sensible", "[types]") {
