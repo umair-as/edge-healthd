@@ -1,0 +1,95 @@
+name: govulncheck
+
+# Vulnerability scan for the optional Go web UI module (web/server).
+#
+# The web UI is opt-in (CMake -DEDGE_WEB_UI=ON) but we built it, so we own its
+# dependency graph. This job is independent of the C++ daemon build and of the
+# Yocto go-native toolchain that ships the release binary.
+#
+# Gating policy (deliberate):
+#   * BLOCKING  — reachable vulnerabilities in third-party dependencies. These
+#     are the ones we can fix by editing web/server/go.mod (e.g. the x/crypto
+#     CVSS-9.0 removal in PR #49).
+#   * ADVISORY  — reachable Go standard-library vulnerabilities. These are only
+#     fixable by bumping the Go compiler (CI setup-go + the Yocto go-native
+#     recipe), tracked separately, so they are reported but do NOT fail CI.
+#     Unreachable findings (present in the graph but never called) are ignored
+#     by govulncheck's call-graph analysis.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'web/server/**'
+      - '.github/workflows/govulncheck.yml'
+
+concurrency:
+  group: govulncheck-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Latest stable Go so the standard-library analysis reflects current
+      # patches. The module declares `go 1.22`; a newer toolchain builds it
+      # backward-compatibly. The version that actually ships is set by the
+      # Yocto go-native recipe, not by this job.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache-dependency-path: web/server/go.sum
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # JSON mode always exits 0; the gate step below decides pass/fail.
+      - name: Scan
+        working-directory: web/server
+        run: govulncheck -format json ./... > "$RUNNER_TEMP/gv.json"
+
+      - name: Evaluate findings
+        run: |
+          set -euo pipefail
+          GV="$RUNNER_TEMP/gv.json"
+
+          # Reachable == a call-stack frame with a resolved function.
+          reachable() { jq -s "[.[] | select(.finding) | .finding
+            | select(.trace[0].module ${1} \"stdlib\" and .trace[0].function != null)
+            | .osv] | unique"; }
+
+          DEPS=$(reachable '!=' < "$GV")
+          STDLIB=$(reachable '==' < "$GV")
+          ndeps=$(jq 'length' <<<"$DEPS")
+          nstd=$(jq 'length' <<<"$STDLIB")
+
+          {
+            echo "## govulncheck — web/server"
+            echo ""
+            echo "* **Blocking** (reachable dependency vulns): **$ndeps**"
+            echo "* Advisory (reachable stdlib vulns, fix via Go toolchain bump): $nstd"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$nstd" -ne 0 ]; then
+            echo "::warning::govulncheck: $nstd reachable Go stdlib vuln(s) — bump the Go toolchain (CI setup-go + Yocto go-native). Advisory only."
+            jq -r '.[]' <<<"$STDLIB" | sed 's/^/  advisory: /'
+          fi
+
+          if [ "$ndeps" -ne 0 ]; then
+            echo "::error::govulncheck: $ndeps reachable vulnerability(ies) in third-party dependencies — update web/server/go.mod."
+            jq -r '.[]' <<<"$DEPS" | sed 's/^/  BLOCKING: /'
+            echo ""
+            echo "Full report:"
+            govulncheck -format text ./... || true
+            exit 1
+          fi
+
+          echo "No reachable dependency vulnerabilities. OK."
+        working-directory: web/server
