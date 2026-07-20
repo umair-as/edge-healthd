@@ -116,16 +116,19 @@ void to_json(nlohmann::json& j, const StorageMount& mount) {
     j = nlohmann::json{
         {"mount", mount.mount},
         {"fs", mount.fs},
-        {"used_pct", mount.used_pct},
-        {"avail_mb", mount.avail_mb}
+        {"available", mount.available}
     };
+    // Omit numeric fields when unavailable rather than emit a misleading 0.
+    if (mount.used_pct) j["used_pct"] = *mount.used_pct;
+    if (mount.avail_mb) j["avail_mb"] = *mount.avail_mb;
 }
 
 void to_json(nlohmann::json& j, const ThermalSensor& sensor) {
     j = nlohmann::json{
         {"sensor", sensor.sensor},
-        {"temp_c", finite_or_zero(sensor.temp_c)}
+        {"available", sensor.available}
     };
+    if (sensor.temp_c) j["temp_c"] = finite_or_zero(*sensor.temp_c);
 }
 
 void to_json(nlohmann::json& j, const NetworkInterface& iface) {

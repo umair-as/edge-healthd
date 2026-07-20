@@ -108,6 +108,50 @@ TEST_CASE("JSON serialize ResourcesStatus", "[json]") {
     CHECK(j["network"][0]["tx_err"] == 4);
 }
 
+TEST_CASE("JSON storage/thermal availability omits fields when unavailable", "[json]") {
+    SECTION("available mount emits numeric fields") {
+        StorageMount m;
+        m.mount = "/";
+        m.fs = "ext4";
+        m.available = true;
+        m.used_pct = uint8_t{50};
+        m.avail_mb = uint64_t{10000};
+        auto j = nlohmann::json(m);
+        CHECK(j["available"] == true);
+        CHECK(j["used_pct"] == 50);
+        CHECK(j["avail_mb"] == 10000);
+    }
+
+    SECTION("unavailable mount omits used_pct/avail_mb, marks available:false") {
+        StorageMount m;
+        m.mount = "/data";
+        m.available = false; // statvfs failed
+        auto j = nlohmann::json(m);
+        CHECK(j["available"] == false);
+        CHECK_FALSE(j.contains("used_pct"));
+        CHECK_FALSE(j.contains("avail_mb"));
+    }
+
+    SECTION("unavailable sensor omits temp_c, marks available:false") {
+        ThermalSensor s;
+        s.sensor = "cpu-thermal";
+        s.available = false;
+        auto j = nlohmann::json(s);
+        CHECK(j["available"] == false);
+        CHECK_FALSE(j.contains("temp_c"));
+    }
+
+    SECTION("available sensor emits temp_c") {
+        ThermalSensor s;
+        s.sensor = "cpu-thermal";
+        s.available = true;
+        s.temp_c = 42.5;
+        auto j = nlohmann::json(s);
+        CHECK(j["available"] == true);
+        CHECK(j["temp_c"] == 42.5);
+    }
+}
+
 TEST_CASE("JSON serialize full SnapshotState", "[json]") {
     SnapshotState state;
     state.generated_at = std::chrono::system_clock::now();

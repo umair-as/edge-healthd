@@ -16,7 +16,12 @@ namespace edge {
 // Enumerations (match JSON schema enums exactly)
 // -----------------------------------------------------------------------------
 
-enum class Severity { Ok, Warn, Crit, Unknown };
+// Health/observability severity. ok/warn/crit are health states; unknown means
+// "never observed" (warm-up or absent dependency — must stay below ok so a fresh
+// boot doesn't alarm); stale means "observed before, now past its freshness
+// window"; unavailable means "a monitored element could not be read this cycle".
+// Roll-up ranking (worst_of): unknown < ok < stale < unavailable < warn < crit.
+enum class Severity { Ok, Warn, Crit, Unknown, Unavailable, Stale };
 
 enum class ServiceState {
     Active,
@@ -43,10 +48,12 @@ enum class UpdateResult { Success, Failed, Unknown };
 
 [[nodiscard]] constexpr std::string_view to_string(Severity s) noexcept {
     switch (s) {
-        case Severity::Ok:      return "ok";
-        case Severity::Warn:    return "warn";
-        case Severity::Crit:    return "crit";
-        case Severity::Unknown: return "unknown";
+        case Severity::Ok:          return "ok";
+        case Severity::Warn:        return "warn";
+        case Severity::Crit:        return "crit";
+        case Severity::Unknown:     return "unknown";
+        case Severity::Unavailable: return "unavailable";
+        case Severity::Stale:       return "stale";
     }
     return "unknown";
 }
@@ -168,13 +175,19 @@ struct MemoryUsage {
 struct StorageMount {
     std::string mount;
     std::string fs;
-    uint8_t used_pct = 0;
-    uint64_t avail_mb = 0;
+    // available=false when statvfs failed (unmounted / missing path) or reported
+    // no capacity; used_pct/avail_mb are then omitted rather than a lying 0.
+    bool available = true;
+    std::optional<uint8_t>  used_pct;
+    std::optional<uint64_t> avail_mb;
 };
 
 struct ThermalSensor {
     std::string sensor;
-    double temp_c = 0.0;
+    // available=false when the temp read failed or was out of plausible range;
+    // temp_c is then omitted rather than a misleading 0 °C.
+    bool available = true;
+    std::optional<double> temp_c;
 };
 
 struct NetworkInterface {

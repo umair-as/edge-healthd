@@ -58,6 +58,54 @@ TEST_CASE("Aggregator evaluates memory severity", "[aggregator]") {
     }
 }
 
+TEST_CASE("Aggregator: unreadable storage/thermal is unavailable, not ok", "[aggregator]") {
+    auto config = Config::defaults();
+    SnapshotAggregator agg(config);
+
+    ResourcesStatus resources;
+    resources.memory.mem_total_mb = 1000;
+    resources.memory.mem_used_mb = 100; // healthy, so it doesn't mask the test
+
+    SECTION("Unmounted/unreadable mount -> Unavailable (R2), not Ok") {
+        StorageMount m;
+        m.mount = "/data";
+        m.available = false; // statvfs failed
+        resources.storage.push_back(m);
+        CHECK(agg.evaluate_resources(resources) == Severity::Unavailable);
+    }
+
+    SECTION("Available mount at healthy usage stays Ok") {
+        StorageMount m;
+        m.mount = "/";
+        m.available = true;
+        m.used_pct = uint8_t{10};
+        m.avail_mb = uint64_t{5000};
+        resources.storage.push_back(m);
+        CHECK(agg.evaluate_resources(resources) == Severity::Ok);
+    }
+
+    SECTION("A real crit mount dominates an unavailable one") {
+        StorageMount bad;
+        bad.mount = "/data";
+        bad.available = false;
+        StorageMount full;
+        full.mount = "/";
+        full.available = true;
+        full.used_pct = uint8_t{99}; // crit
+        resources.storage.push_back(bad);
+        resources.storage.push_back(full);
+        CHECK(agg.evaluate_resources(resources) == Severity::Crit);
+    }
+
+    SECTION("Dead thermal sensor -> Unavailable (R3), not Ok") {
+        ThermalSensor s;
+        s.sensor = "cpu-thermal";
+        s.available = false; // temp read failed
+        resources.thermal.push_back(s);
+        CHECK(agg.evaluate_resources(resources) == Severity::Unavailable);
+    }
+}
+
 TEST_CASE("Aggregator computes overall severity", "[aggregator]") {
     auto config = Config::defaults();
     SnapshotAggregator agg(config);

@@ -254,9 +254,12 @@ Severity SnapshotAggregator::evaluate_disk(const std::vector<StorageMount>& stor
     Severity worst = Severity::Ok;
 
     for (const auto& mount : storage) {
-        if (mount.used_pct >= config_.thresholds.disk_used_crit) {
+        if (!mount.available || !mount.used_pct) {
+            // Can't read a monitored mount → loss of observability, not healthy.
+            worst = worst_of({worst, Severity::Unavailable});
+        } else if (*mount.used_pct >= config_.thresholds.disk_used_crit) {
             worst = worst_of({worst, Severity::Crit});
-        } else if (mount.used_pct >= config_.thresholds.disk_used_warn) {
+        } else if (*mount.used_pct >= config_.thresholds.disk_used_warn) {
             worst = worst_of({worst, Severity::Warn});
         }
     }
@@ -268,9 +271,12 @@ Severity SnapshotAggregator::evaluate_thermal(const std::vector<ThermalSensor>& 
     Severity worst = Severity::Ok;
 
     for (const auto& sensor : thermal) {
-        if (sensor.temp_c >= config_.thresholds.temp_crit_c) {
+        if (!sensor.available || !sensor.temp_c) {
+            // Dead/unreadable sensor → unavailable, not a healthy 0 °C.
+            worst = worst_of({worst, Severity::Unavailable});
+        } else if (*sensor.temp_c >= config_.thresholds.temp_crit_c) {
             worst = worst_of({worst, Severity::Crit});
-        } else if (sensor.temp_c >= config_.thresholds.temp_warn_c) {
+        } else if (*sensor.temp_c >= config_.thresholds.temp_warn_c) {
             worst = worst_of({worst, Severity::Warn});
         }
     }
@@ -285,10 +291,17 @@ Severity SnapshotAggregator::worst_of(std::initializer_list<Severity> severities
     for (auto s : severities) {
         int rank = 0;
         switch (s) {
-            case Severity::Unknown: rank = 0; break;
-            case Severity::Ok: rank = 1; break;
-            case Severity::Warn: rank = 2; break;
-            case Severity::Crit: rank = 3; break;
+            // unknown (never observed) stays below ok so a warm-up / absent
+            // dependency never raises the roll-up. stale and unavailable are
+            // loss-of-observability signals that DO surface (above ok), but rank
+            // below warn/crit so a real health signal — including a stale
+            // section's retained last-known warn/crit — still dominates.
+            case Severity::Unknown:     rank = 0; break;
+            case Severity::Ok:          rank = 1; break;
+            case Severity::Stale:       rank = 2; break;
+            case Severity::Unavailable: rank = 3; break;
+            case Severity::Warn:        rank = 4; break;
+            case Severity::Crit:        rank = 5; break;
         }
         if (rank > worst_rank) {
             worst_rank = rank;

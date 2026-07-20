@@ -14,14 +14,17 @@ namespace {
 const sdbus::ObjectPath kObjectPath{"/edge/health/manager"};
 
 // Returns true if new_sev represents a degradation relative to prev_sev.
-// Degradation order: Unknown < Ok < Warn < Crit.
+// Ranking mirrors SnapshotAggregator::worst_of:
+//   Unknown < Ok < Stale < Unavailable < Warn < Crit.
 bool is_degradation(Severity prev_sev, Severity new_sev) {
     auto rank = [](Severity s) -> int {
         switch (s) {
-            case Severity::Unknown: return 0;
-            case Severity::Ok:      return 1;
-            case Severity::Warn:    return 2;
-            case Severity::Crit:    return 3;
+            case Severity::Unknown:     return 0;
+            case Severity::Ok:          return 1;
+            case Severity::Stale:       return 2;
+            case Severity::Unavailable: return 3;
+            case Severity::Warn:        return 4;
+            case Severity::Crit:        return 5;
         }
         return 0;
     };

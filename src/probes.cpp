@@ -591,7 +591,14 @@ std::vector<StorageMount> ResourcesProbe::collect_storage() const {
                 uint64_t used = total - free;
                 mount.used_pct = static_cast<uint8_t>((used * 100) / total);
                 mount.avail_mb = avail / (1024 * 1024);
+            } else {
+                // statvfs succeeded but reported no capacity — can't derive usage.
+                mount.available = false;
             }
+        } else {
+            // Unmounted or missing monitored path: report unavailable, not a
+            // healthy 0% (R2). The mount still appears in the snapshot.
+            mount.available = false;
         }
 
         struct statfs fs_stat{};
@@ -633,13 +640,20 @@ std::vector<ThermalSensor> ResourcesProbe::collect_thermal() const {
             sensor.sensor = name;
         }
 
-        // Read temperature
+        // Read temperature. A failed read or an implausible value marks the
+        // sensor unavailable rather than reporting a misleading 0 °C (R3).
         std::string temp_path = std::string(thermal_path) + "/" + name + "/temp";
         std::ifstream temp_file(temp_path);
-        if (temp_file) {
-            int millidegrees = 0;
-            temp_file >> millidegrees;
-            sensor.temp_c = millidegrees / 1000.0;
+        int millidegrees = 0;
+        if (temp_file && (temp_file >> millidegrees)) {
+            const double celsius = millidegrees / 1000.0;
+            if (celsius >= -40.0 && celsius <= 150.0) {
+                sensor.temp_c = celsius;
+            } else {
+                sensor.available = false;  // out of plausible range → bad read
+            }
+        } else {
+            sensor.available = false;
         }
 
         sensors.push_back(std::move(sensor));
