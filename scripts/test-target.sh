@@ -58,6 +58,7 @@ trigger_and_wait() {
         sleep 6
     done
     sleep 3
+    return 1  # never accepted within the retry budget
 }
 
 # ── 1. Service health ─────────────────────────────────────────────────────────
@@ -226,8 +227,16 @@ if have busctl; then
     SEV=$(busctl get-property "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" OverallSeverity 2>/dev/null | awk '{print $2}' | tr -d '"')
     [[ "$SEV" =~ ^(ok|warn|crit|unknown|stale|unavailable)$ ]] && pass "OverallSeverity: $SEV" || fail "OverallSeverity invalid: '$SEV'"
 
-    TR=$(busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" TriggerSnapshot 2>/dev/null || echo "error")
-    [[ "$TR" =~ "b true" ]] && pass "TriggerSnapshot returned true" || fail "TriggerSnapshot failed: $TR"
+    # Use the retry helper, not a bare call: TriggerSnapshot is rate-limited
+    # (trigger_min_interval_sec, default 5s), so a recent trigger from an earlier
+    # section makes a single call return "b false" — a false failure. The helper
+    # spaces retries past the rate-limit window and returns non-zero only if the
+    # call is never accepted.
+    if trigger_and_wait; then
+        pass "TriggerSnapshot accepted (b true)"
+    else
+        fail "TriggerSnapshot never returned true within the retry budget"
+    fi
 
     LOGS=$(busctl call "$DBUS_DEST" "$DBUS_OBJ" "$DBUS_IFACE" GetRecentLogs u 10 2>/dev/null || echo "error")
     [[ "$LOGS" != "error" ]] && pass "GetRecentLogs(10) OK" || fail "GetRecentLogs failed"
