@@ -341,3 +341,38 @@ TEST_CASE("Aggregator: evaluate_crash severity truth table", "[aggregator]") {
         CHECK(agg.evaluate_crash(c) == Severity::Ok);
     }
 }
+
+TEST_CASE("degraded_domains lists subsystems worse than ok", "[summary]") {
+    SECTION("all ok yields an empty list") {
+        DomainSeverities d;  // defaults are Unknown
+        d.boot = d.services = d.resources = d.time_sync = d.update =
+            d.journal = d.crash = Severity::Ok;
+        CHECK(degraded_domains(d).empty());
+    }
+
+    SECTION("unknown (never observed) is omitted as non-actionable") {
+        DomainSeverities d;  // every field defaults to Unknown
+        CHECK(degraded_domains(d).empty());
+    }
+
+    SECTION("only worse-than-ok domains appear, in declaration order") {
+        DomainSeverities d;
+        d.boot      = Severity::Ok;
+        d.services  = Severity::Warn;
+        d.resources = Severity::Unavailable;
+        d.time_sync = Severity::Stale;
+        d.update    = Severity::Ok;
+        d.journal   = Severity::Unknown;  // omitted
+        d.crash     = Severity::Crit;
+        CHECK(degraded_domains(d) ==
+              "services=warn, resources=unavailable, time_sync=stale, crash=crit");
+    }
+
+    SECTION("a single degraded domain has no trailing separator") {
+        DomainSeverities d;
+        d.boot = d.services = d.resources = d.time_sync = d.update =
+            d.journal = Severity::Ok;
+        d.services = Severity::Warn;
+        CHECK(degraded_domains(d) == "services=warn");
+    }
+}

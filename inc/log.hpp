@@ -287,7 +287,14 @@ inline void error(std::string_view msg) {
 // Structured logging for observability events
 // -----------------------------------------------------------------------------
 
-inline void snapshot_collected(std::string_view severity) {
+// Heartbeat log for each collection cycle. `severity` is the roll-up; `degraded`
+// is an optional "domain=sev, …" list of the subsystems worse than ok, folded
+// into the human-readable MESSAGE so a plain `journalctl` view is self-describing
+// (the machine-parseable SEVERITY field is kept). Rate-limited to k_snapshot_
+// interval per *severity* — a severity change logs immediately; within-severity
+// cycles are suppressed — so the message stays keyed to the roll-up transition.
+inline void snapshot_collected(std::string_view severity,
+                               std::string_view degraded = {}) {
     if (should_log(Level::Info)) {
         static std::string last_severity;
         static auto last_log = std::chrono::steady_clock::time_point::min();
@@ -308,7 +315,14 @@ inline void snapshot_collected(std::string_view severity) {
         }
 
         if (allow) {
-            detail::write_structured(Level::Info, "Snapshot collected",
+            std::string message = "Snapshot collected: ";
+            message.append(severity.data(), severity.size());
+            if (!degraded.empty()) {
+                message += " (";
+                message.append(degraded.data(), degraded.size());
+                message += ')';
+            }
+            detail::write_structured(Level::Info, message,
                                      "SEVERITY", severity);
         }
     }
