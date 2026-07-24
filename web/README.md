@@ -28,7 +28,7 @@ The Web UI provides a local dashboard that displays health status from edge-heal
 
 ### Requirements
 
-- Go 1.22+
+- Go 1.26+
 - Node.js 20+
 - npm 10+
 - CMake 3.20+
