@@ -10,6 +10,7 @@
 #pragma once
 
 #include "types.hpp"
+#include "ethtool_link.hpp"
 
 #include <chrono>
 #include <concepts>
@@ -194,6 +195,10 @@ private:
     NetlinkMonitor& nl_monitor_;
     std::vector<std::string> monitored_mounts_;
     std::vector<std::string> monitored_interfaces_;
+    // Persistent ethtool genl socket + cached family id, reused across cycles
+    // (issue #59). mutable: collect_network() is const but must update the
+    // cached socket/family state on the first query and on socket recovery.
+    mutable EthtoolQuerier ethtool_;
 
     [[nodiscard]] CpuLoad collect_cpu_load() const;
     [[nodiscard]] ProbeResult<MemoryUsage> collect_memory() const;

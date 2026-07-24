@@ -14,15 +14,11 @@ namespace edge {
 
 namespace {
 
-// RAII wrapper for the mnl socket so every early return closes it.
-struct MnlSocket {
-    struct mnl_socket* s = nullptr;
-    explicit MnlSocket(int bus) : s(mnl_socket_open(bus)) {}
-    ~MnlSocket() { if (s) mnl_socket_close(s); }
-    MnlSocket(const MnlSocket&) = delete;
-    MnlSocket& operator=(const MnlSocket&) = delete;
-    explicit operator bool() const { return s != nullptr; }
-};
+// Outcome of one request/reply exchange. A per-message error (the kernel
+// answering NLMSG_ERROR, e.g. an interface with no ethtool ops) is distinct
+// from a socket-level error: the former just skips that interface, the latter
+// means the persistent socket must be torn down and reopened.
+enum class ReqStatus { Ok, MsgError, SocketError };
 
 unsigned int next_seq() {
     // Uniqueness within the socket is all mnl_cb_run needs for matching.
@@ -78,23 +74,31 @@ int linkmodes_msg_cb(const struct nlmsghdr* nlh, void* data) {
 }
 
 // Run a request/reply exchange, dispatching each reply message through `cb`.
-// Returns false on send/recv error (the caller then leaves fields nullopt).
-bool run_request(struct mnl_socket* nl, struct nlmsghdr* nlh, unsigned int seq,
-                 unsigned int portid, mnl_cb_t cb, void* data) {
+// SocketError means the send/recv failed (socket is suspect); MsgError means
+// the kernel replied NLMSG_ERROR for this request; Ok otherwise.
+ReqStatus run_request(struct mnl_socket* nl, struct nlmsghdr* nlh,
+                      unsigned int seq, unsigned int portid, mnl_cb_t cb,
+                      void* data) {
     if (mnl_socket_sendto(nl, nlh, nlh->nlmsg_len) < 0) {
-        return false;
+        return ReqStatus::SocketError;
     }
     std::vector<char> buf(static_cast<size_t>(MNL_SOCKET_BUFFER_SIZE));
     ssize_t n = mnl_socket_recvfrom(nl, buf.data(), buf.size());
+    if (n < 0) {
+        return ReqStatus::SocketError;
+    }
     while (n > 0) {
         const int ret = mnl_cb_run(buf.data(), static_cast<size_t>(n), seq,
                                    portid, cb, data);
         if (ret <= MNL_CB_STOP) {
-            return ret != MNL_CB_ERROR;
+            return ret == MNL_CB_ERROR ? ReqStatus::MsgError : ReqStatus::Ok;
         }
         n = mnl_socket_recvfrom(nl, buf.data(), buf.size());
+        if (n < 0) {
+            return ReqStatus::SocketError;
+        }
     }
-    return true;
+    return ReqStatus::Ok;
 }
 
 uint16_t resolve_family(struct mnl_socket* nl, unsigned int portid,
@@ -118,8 +122,11 @@ uint16_t resolve_family(struct mnl_socket* nl, unsigned int portid,
     return family;
 }
 
+// Query one interface. `status` reports whether a failure was per-message
+// (skip this interface) or socket-level (the caller resets the socket).
 std::optional<EthtoolLink> query_one(struct mnl_socket* nl, unsigned int portid,
-                                     uint16_t family, const std::string& ifname) {
+                                     uint16_t family, const std::string& ifname,
+                                     ReqStatus& status) {
     std::vector<char> buf(static_cast<size_t>(MNL_SOCKET_BUFFER_SIZE));
     struct nlmsghdr* nlh = mnl_nlmsg_put_header(buf.data());
     nlh->nlmsg_type = family;
@@ -137,38 +144,75 @@ std::optional<EthtoolLink> query_one(struct mnl_socket* nl, unsigned int portid,
     mnl_attr_nest_end(nlh, nest);
 
     EthtoolLink info;
-    if (!run_request(nl, nlh, seq, portid, linkmodes_msg_cb, &info)) {
-        return std::nullopt; // e.g. interface has no ethtool ops
+    status = run_request(nl, nlh, seq, portid, linkmodes_msg_cb, &info);
+    if (status != ReqStatus::Ok) {
+        return std::nullopt; // e.g. interface has no ethtool ops (MsgError)
     }
     return info;
 }
 
 } // namespace
 
+EthtoolQuerier::~EthtoolQuerier() { reset(); }
+
+void EthtoolQuerier::reset() {
+    if (sock_) {
+        mnl_socket_close(sock_);
+    }
+    sock_ = nullptr;
+    portid_ = 0;
+    family_ = 0;
+}
+
+bool EthtoolQuerier::ensure_ready() {
+    if (!sock_) {
+        sock_ = mnl_socket_open(NETLINK_GENERIC);
+        if (!sock_) {
+            return false; // no genl access → speed/duplex simply absent
+        }
+        if (mnl_socket_bind(sock_, 0, MNL_SOCKET_AUTOPID) < 0) {
+            reset();
+            return false;
+        }
+        portid_ = mnl_socket_get_portid(sock_);
+    }
+    if (family_ == 0) {
+        // Resolve once and cache; a bound-but-unresolved socket is kept so only
+        // the resolve is retried next cycle.
+        family_ = resolve_family(sock_, portid_, ETHTOOL_GENL_NAME);
+        if (family_ == 0) {
+            return false; // ethtool family unavailable on this kernel
+        }
+    }
+    return true;
+}
+
 std::unordered_map<std::string, EthtoolLink>
-ethtool_query_links(const std::vector<std::string>& ifnames) {
+EthtoolQuerier::query(const std::vector<std::string>& ifnames) {
     std::unordered_map<std::string, EthtoolLink> out;
     if (ifnames.empty()) return out;
-
-    MnlSocket sock(NETLINK_GENERIC);
-    if (!sock || mnl_socket_bind(sock.s, 0, MNL_SOCKET_AUTOPID) < 0) {
-        return out; // no genl access → speed/duplex simply absent
-    }
-    const unsigned int portid = mnl_socket_get_portid(sock.s);
-
-    const uint16_t family = resolve_family(sock.s, portid, ETHTOOL_GENL_NAME);
-    if (family == 0) {
-        return out; // ethtool family unavailable on this kernel
-    }
+    if (!ensure_ready()) return out;
 
     for (const auto& ifname : ifnames) {
-        if (auto info = query_one(sock.s, portid, family, ifname)) {
-            if (info->speed_mbps || info->duplex) {
-                out[ifname] = *info;
-            }
+        ReqStatus status = ReqStatus::Ok;
+        auto info = query_one(sock_, portid_, family_, ifname, status);
+        if (status == ReqStatus::SocketError) {
+            // The persistent socket is suspect; drop it so the next cycle
+            // reopens cleanly and abandon the rest of this batch.
+            reset();
+            break;
+        }
+        if (info && (info->speed_mbps || info->duplex)) {
+            out[ifname] = *info;
         }
     }
     return out;
+}
+
+std::unordered_map<std::string, EthtoolLink>
+ethtool_query_links(const std::vector<std::string>& ifnames) {
+    EthtoolQuerier querier;
+    return querier.query(ifnames);
 }
 
 } // namespace edge

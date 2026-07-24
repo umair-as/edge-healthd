@@ -691,9 +691,10 @@ std::vector<NetworkInterface> ResourcesProbe::collect_network() const {
     }
 
     // Query link speed/duplex for all interfaces via the ethtool generic-netlink
-    // family (one socket for the batch). Absent/failed entries just leave the
-    // fields unset — link-down or ethtool-less interfaces omit speed/duplex.
-    const auto ethtool_map = ethtool_query_links(iface_list);
+    // family, reusing a persistent socket + cached family id across cycles
+    // (issue #59). Absent/failed entries just leave the fields unset — link-down
+    // or ethtool-less interfaces omit speed/duplex.
+    const auto ethtool_map = ethtool_.query(iface_list);
 
     for (const auto& ifname : iface_list) {
         NetworkInterface iface;
