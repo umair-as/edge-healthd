@@ -530,8 +530,10 @@ void SnapshotDaemon::collection_cycle() {
         }
     }
 
-    // Log snapshot with severity
-    log::snapshot_collected(to_string(new_sev));
+    // Log snapshot with severity + the degraded domains, so a plain journalctl
+    // view names the subsystem to look at, not just the roll-up.
+    log::snapshot_collected(to_string(new_sev),
+                            degraded_domains(current_state_.summary.domains));
 
     // Keep systemctl status current: version + live severity visible without journalctl
     systemd::notify_status(EDGE_HEALTHD_VERSION, to_string(new_sev));

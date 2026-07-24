@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace edge {
@@ -332,6 +334,33 @@ struct DomainSeverities {
     Severity journal   = Severity::Unknown;
     Severity crash     = Severity::Unknown;
 };
+
+// Compact "name=sev, …" list of every domain worse than ok, in declaration
+// order (empty when all domains are ok or never-observed). Feeds the heartbeat
+// log so "Snapshot collected" names the degraded subsystem, not just the
+// roll-up. unknown (never observed) is omitted as non-actionable; stale,
+// unavailable, warn and crit are all worse than ok and get listed.
+[[nodiscard]] inline std::string degraded_domains(const DomainSeverities& d) {
+    const std::pair<std::string_view, Severity> doms[] = {
+        {"boot", d.boot},           {"services", d.services},
+        {"resources", d.resources}, {"time_sync", d.time_sync},
+        {"update", d.update},       {"journal", d.journal},
+        {"crash", d.crash},
+    };
+    std::string out;
+    for (const auto& [name, sev] : doms) {
+        if (sev == Severity::Ok || sev == Severity::Unknown) {
+            continue;
+        }
+        if (!out.empty()) {
+            out += ", ";
+        }
+        out += name;
+        out += '=';
+        out += to_string(sev);
+    }
+    return out;
+}
 
 struct SnapshotSummary {
     Severity severity = Severity::Unknown;
