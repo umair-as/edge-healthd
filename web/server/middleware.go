@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -63,6 +65,26 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.status = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack lets the WebSocket upgrader take over the connection through the
+// logging wrapper. Without it the upgrade fails with 500 and every client
+// silently falls back to HTTP polling.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("underlying ResponseWriter does not support hijacking")
+	}
+	conn, brw, err := h.Hijack()
+	if err == nil {
+		rw.status = http.StatusSwitchingProtocols
+	}
+	return conn, brw, err
+}
+
+// Unwrap exposes the wrapped writer to http.ResponseController.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
 }
 
 // SecurityHeadersMiddleware adds security headers to all responses
