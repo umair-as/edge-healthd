@@ -22,6 +22,9 @@ export default {
         'severity-warn': '#eab308',    // yellow-500
         'severity-crit': '#ef4444',    // red-500
         'severity-unknown': '#6b7280', // gray-500
+        // Loss-of-observability states — deliberately off the ok→crit hue ramp
+        'severity-stale': '#818cf8',       // indigo-400 — collected before, now past freshness window
+        'severity-unavailable': '#94a3b8', // slate-400  — element could not be read this cycle
 
         // Dark mode — neutral grey palette
         'dark-bg': '#141414',          // page background — near-black

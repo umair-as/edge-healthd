@@ -93,6 +93,11 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
+`--rotate` cycles through the `healthy`, `degraded`, `critical`, and `blind` scenarios; pin one with
+`--scenario <name>`. `blind` exercises loss of observability (a stale section, an unreadable mount,
+a dead thermal sensor), and `critical` carries an unacknowledged kernel panic. Deterministic
+fixtures for each scenario live in `mock/sample_states/` and can be passed to the server's `-state` flag.
+
 ## Configuration
 
 ### Server Flags

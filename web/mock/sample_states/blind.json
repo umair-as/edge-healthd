@@ -94,9 +94,7 @@
       {
         "mount": "/data",
         "fs": "ext4",
-        "used_pct": 20,
-        "avail_mb": 8192,
-        "available": true
+        "available": false
       }
     ],
     "thermal": [
@@ -107,8 +105,7 @@
       },
       {
         "sensor": "gpu_thermal",
-        "temp_c": 42.1,
-        "available": true
+        "available": false
       }
     ],
     "network": [
@@ -154,8 +151,8 @@
       "voltage_mv": 2950,
       "drift_sec": 0.3
     },
-    "collected_at": "2026-07-20T09:00:00Z",
-    "stale": false
+    "collected_at": "2026-07-20T08:45:00Z",
+    "stale": true
   },
   "update": {
     "overall": "ok",
@@ -181,20 +178,18 @@
     "stale": false
   },
   "summary": {
-    "severity": "ok",
+    "severity": "unavailable",
     "domains": {
       "boot": "ok",
       "services": "ok",
-      "resources": "ok",
-      "time_sync": "ok",
+      "resources": "unavailable",
+      "time_sync": "stale",
       "update": "ok",
       "journal": "ok",
       "crash": "ok"
     },
-    "reasons": [
-      "all_ok"
-    ],
-    "notes": null
+    "reasons": [],
+    "notes": "Observability loss: /data unreadable, gpu_thermal sensor dead, time sync not refreshed"
   },
   "cycle": 42,
   "journal": {
