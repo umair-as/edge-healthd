@@ -352,13 +352,16 @@ def generate_summary(boot: dict, services: dict, resources: dict, time_sync: dic
 
     overall = worst_of(*domains.values())
 
-    reasons = []
-    if services["overall"] != "ok":
-        reasons.append("service_degraded")
-    if time_sync["overall"] != "ok":
-        reasons.append("time_sync_issue")
+    # Reason codes mirror the daemon's aggregator (docs: schema §5).
+    reasons = [f"svc_failed:{u['name']}" for u in services["units"] if u["state"] == "failed"]
     if mem_ratio > 0.7:
-        reasons.append("high_memory")
+        reasons.append("mem_used_high")
+    reasons += [f"disk_used_high:{m['mount']}" for m in resources.get("storage", [])
+                if m["available"] and m["used_pct"] >= 90]
+    reasons += [f"temp_high:{t['sensor']}" for t in resources.get("thermal", [])
+                if t["available"] and t["temp_c"] >= 80]
+    if time_sync["source"] == "none":
+        reasons.append("time_unsynced")
     if journal["overall"] in ("warn", "crit"):
         reasons.append("journal_errors")
     if crash_sev == "crit":
