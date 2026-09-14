@@ -21,7 +21,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 # ============================================
 # Server development stage
 # ============================================
-FROM golang:1.23-alpine AS server
+FROM golang:1.26-alpine AS server
 
 WORKDIR /app
 

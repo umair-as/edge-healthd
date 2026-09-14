@@ -207,7 +207,7 @@ busctl monitor edge.health
 
 ## Optional web UI
 
-A small Go server with an embedded Preact + TypeScript dashboard ships behind `EDGE_WEB_UI=ON`. Seven views: Dashboard, Services, Resources, Network, TimeSync, Update, Journal. HTTPS-first (bring your own cert via `-tls-cert` / `-tls-key`; a helper script generates a self-signed RSA-4096 cert with SAN). WebSocket push with HTTP-polling fallback and `localStorage` persistence.
+A small Go server with an embedded Preact + TypeScript dashboard ships behind `EDGE_WEB_UI=ON`. A single page leads with a one-line verdict and a per-domain annunciator, then lists domain details with problems first; stale sections and unreadable readings are labeled explicitly. HTTPS-first (bring your own cert via `-tls-cert` / `-tls-key`; a helper script generates a self-signed RSA-4096 cert with SAN). WebSocket push with HTTP-polling fallback and `localStorage` persistence.
 
 See [`web/README.md`](../web/README.md) for server flags, TLS setup, and the CSRF / same-origin model.
 

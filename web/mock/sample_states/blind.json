@@ -1,0 +1,202 @@
+{
+  "schema": "edge.health.state",
+  "schema_version": "1.1",
+  "generated_at": "2026-07-20T12:00:05Z",
+  "device": {
+    "device_id": "edge-dev-001",
+    "hostname": "edge-gateway-01",
+    "platform": "rpi5",
+    "arch": "aarch64",
+    "os": {
+      "distro": "Buildroot",
+      "version": "2024.02",
+      "build_id": "dev-20240115",
+      "kernel": "6.1.70-edge"
+    }
+  },
+  "boot": {
+    "boot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "last_boot_at": "2026-07-20T08:00:00Z",
+    "uptime": 14400,
+    "boot_ok": true,
+    "boot_fail_count": 0,
+    "last_reboot_reason": null,
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  },
+  "services": {
+    "overall": "ok",
+    "units": [
+      {
+        "name": "edge-healthd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2026-07-20T08:00:01Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "edge-mqtt.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2026-07-20T08:00:02Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "edge-ota.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2026-07-20T08:00:03Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      },
+      {
+        "name": "chronyd.service",
+        "state": "active",
+        "severity": "ok",
+        "since": "2026-07-20T08:00:04Z",
+        "restart_count": 0,
+        "result": "success",
+        "detail": null,
+        "log_excerpt": []
+      }
+    ],
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  },
+  "resources": {
+    "sample_window_sec": 60,
+    "cpu": {
+      "load1": 0.45,
+      "load5": 0.38,
+      "load15": 0.32
+    },
+    "memory": {
+      "mem_total_mb": 4096,
+      "mem_used_mb": 1843,
+      "swap_used_mb": 0
+    },
+    "storage": [
+      {
+        "mount": "/",
+        "fs": "ext4",
+        "used_pct": 35,
+        "avail_mb": 2048,
+        "available": true
+      },
+      {
+        "mount": "/data",
+        "fs": "ext4",
+        "available": false
+      }
+    ],
+    "thermal": [
+      {
+        "sensor": "cpu_thermal",
+        "temp_c": 45.2,
+        "available": true
+      },
+      {
+        "sensor": "gpu_thermal",
+        "available": false
+      }
+    ],
+    "network": [
+      {
+        "ifname": "eth0",
+        "link": "up",
+        "rx_bytes": 12345678,
+        "tx_bytes": 9876543,
+        "rx_packets": 98765,
+        "tx_packets": 87654,
+        "rx_dropped": 0,
+        "tx_dropped": 0,
+        "rx_err": 0,
+        "tx_err": 0,
+        "ip": "192.168.1.100",
+        "carrier": true,
+        "speed_mbps": 1000,
+        "duplex": "full"
+      }
+    ],
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  },
+  "time_sync": {
+    "overall": "ok",
+    "source": "ntp",
+    "ntp": {
+      "enabled": true,
+      "state": "locked",
+      "last_sync_at": "2026-07-20T11:55:00Z"
+    },
+    "ptp": {
+      "enabled": false,
+      "interface": null,
+      "offset_ns": null,
+      "rms_ns": null,
+      "last_sync_at": null,
+      "role": null
+    },
+    "rtc": {
+      "enabled": true,
+      "hctosys": true,
+      "voltage_mv": 2950,
+      "drift_sec": 0.3
+    },
+    "collected_at": "2026-07-20T11:45:00Z",
+    "stale": true
+  },
+  "update": {
+    "overall": "ok",
+    "active_slot": "A",
+    "last_update": {
+      "id": "update-2026-07-15-001",
+      "installed_at": "2026-07-15T12:00:00Z",
+      "result": "success",
+      "detail": null
+    },
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  },
+  "crash": {
+    "present": false,
+    "source": null,
+    "last_panic_at": null,
+    "fingerprint": null,
+    "artifact_count": 0,
+    "artifacts": [],
+    "acknowledged": false,
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  },
+  "summary": {
+    "severity": "unavailable",
+    "domains": {
+      "boot": "ok",
+      "services": "ok",
+      "resources": "unavailable",
+      "time_sync": "stale",
+      "update": "ok",
+      "journal": "ok",
+      "crash": "ok"
+    },
+    "reasons": [],
+    "notes": "Observability loss: /data unreadable, gpu_thermal sensor dead, time sync not refreshed"
+  },
+  "cycle": 42,
+  "journal": {
+    "overall": "ok",
+    "error_count": 0,
+    "recent_errors": [],
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  }
+}

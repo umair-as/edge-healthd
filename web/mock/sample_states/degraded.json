@@ -1,7 +1,7 @@
 {
   "schema": "edge.health.state",
   "schema_version": "1.1",
-  "generated_at": "2024-01-15T12:00:00Z",
+  "generated_at": "2026-07-20T12:00:05Z",
   "device": {
     "device_id": "edge-dev-001",
     "hostname": "edge-gateway-01",
@@ -16,12 +16,12 @@
   },
   "boot": {
     "boot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "last_boot_at": "2024-01-15T08:00:00Z",
+    "last_boot_at": "2026-07-20T08:00:00Z",
     "uptime": 14400,
     "boot_ok": true,
     "boot_fail_count": 0,
     "last_reboot_reason": null,
-    "collected_at": "2026-07-20T09:00:00Z",
+    "collected_at": "2026-07-20T12:00:00Z",
     "stale": false
   },
   "services": {
@@ -31,7 +31,7 @@
         "name": "edge-healthd.service",
         "state": "active",
         "severity": "ok",
-        "since": "2024-01-15T08:00:01Z",
+        "since": "2026-07-20T08:00:01Z",
         "restart_count": 0,
         "result": "success",
         "detail": null,
@@ -41,7 +41,7 @@
         "name": "edge-mqtt.service",
         "state": "active",
         "severity": "warn",
-        "since": "2024-01-15T08:00:02Z",
+        "since": "2026-07-20T08:00:02Z",
         "restart_count": 2,
         "result": "success",
         "detail": "Connection intermittent",
@@ -55,7 +55,7 @@
         "name": "edge-ota.service",
         "state": "active",
         "severity": "ok",
-        "since": "2024-01-15T08:00:03Z",
+        "since": "2026-07-20T08:00:03Z",
         "restart_count": 0,
         "result": "success",
         "detail": null,
@@ -65,14 +65,14 @@
         "name": "chronyd.service",
         "state": "active",
         "severity": "ok",
-        "since": "2024-01-15T08:00:04Z",
+        "since": "2026-07-20T08:00:04Z",
         "restart_count": 0,
         "result": "success",
         "detail": null,
         "log_excerpt": []
       }
     ],
-    "collected_at": "2026-07-20T09:00:00Z",
+    "collected_at": "2026-07-20T12:00:00Z",
     "stale": false
   },
   "resources": {
@@ -133,7 +133,7 @@
         "duplex": "full"
       }
     ],
-    "collected_at": "2026-07-20T09:00:00Z",
+    "collected_at": "2026-07-20T12:00:00Z",
     "stale": false
   },
   "time_sync": {
@@ -142,7 +142,7 @@
     "ntp": {
       "enabled": true,
       "state": "locked",
-      "last_sync_at": "2024-01-15T11:55:00Z"
+      "last_sync_at": "2026-07-20T11:55:00Z"
     },
     "ptp": {
       "enabled": false,
@@ -158,19 +158,30 @@
       "voltage_mv": 2680,
       "drift_sec": -1.2
     },
-    "collected_at": "2026-07-20T09:00:00Z",
+    "collected_at": "2026-07-20T12:00:00Z",
     "stale": false
   },
   "update": {
     "overall": "ok",
     "active_slot": "A",
     "last_update": {
-      "id": "update-2024-01-10-001",
-      "installed_at": "2024-01-10T12:00:00Z",
+      "id": "update-2026-07-15-001",
+      "installed_at": "2026-07-15T12:00:00Z",
       "result": "success",
       "detail": null
     },
-    "collected_at": "2026-07-20T09:00:00Z",
+    "collected_at": "2026-07-20T12:00:00Z",
+    "stale": false
+  },
+  "crash": {
+    "present": false,
+    "source": null,
+    "last_panic_at": null,
+    "fingerprint": null,
+    "artifact_count": 0,
+    "artifacts": [],
+    "acknowledged": false,
+    "collected_at": "2026-07-20T12:00:00Z",
     "stale": false
   },
   "summary": {
@@ -185,8 +196,8 @@
       "crash": "ok"
     },
     "reasons": [
-      "service_degraded",
-      "high_memory"
+      "mem_used_high",
+      "journal_errors"
     ],
     "notes": "MQTT service experiencing intermittent connectivity"
   },

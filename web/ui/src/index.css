@@ -2,63 +2,101 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base font */
-body {
-  font-family: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
+/* ---------------------------------------------------------------------------
+ * Theme tokens (RGB channels). Light is the base; `.dark` on <html> overrides.
+ * Contrast: every ink, focus, and severity color meets WCAG AA (4.5:1) on bg,
+ * panel, and raised, and on its own 14% severity tint, in both themes.
+ * ------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+  --bg: 236 239 243;
+  --panel: 255 255 255;
+  --raised: 245 247 250;
+  --line: 212 218 226;
+  --ink: 22 27 34;
+  --ink-muted: 78 88 101;
+  --ink-faint: 98 107 119;
+  --focus: 37 99 175;
+
+  --ok: 21 122 80;
+  --warn: 150 82 0;
+  --crit: 190 36 26;
+  --unknown: 100 108 120;
+  --stale: 79 70 229;
+  --unavailable: 90 105 128;
 }
 
-code, pre, .font-mono {
-  font-family: 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+.dark {
+  color-scheme: dark;
+  --bg: 15 17 20;
+  --panel: 23 26 30;
+  --raised: 31 35 40;
+  --line: 45 51 59;
+  --ink: 226 230 235;
+  --ink-muted: 156 165 176;
+  --ink-faint: 134 143 155;
+  --focus: 122 167 217;
+
+  --ok: 74 196 142;
+  --warn: 245 166 35;
+  --crit: 255 99 86;
+  --unknown: 136 144 155;
+  --stale: 146 155 255;
+  --unavailable: 154 168 189;
 }
 
-/* Smooth transitions for theme changes */
-html {
-  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-}
-
-/* Custom scrollbar for dark mode */
-.dark ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #1e1e1e;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #3e3e3e;
-  border-radius: 4px;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #525252;
-}
-
-/* Status pulse animation */
-@keyframes status-pulse {
-  0%, 100% {
-    opacity: 1;
+@layer base {
+  html {
+    @apply bg-bg text-ink antialiased;
   }
-  50% {
-    opacity: 0.5;
+
+  body {
+    @apply font-sans;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-focus;
   }
 }
 
-.status-pulse {
-  animation: status-pulse 2s ease-in-out infinite;
+@layer components {
+  .eyebrow {
+    @apply font-mono text-eyebrow uppercase text-ink-faint;
+  }
+
+  /* Annunciator tile hatching: loss of visibility reads as "can't see",
+   * not as another color on the health ramp. */
+  .hatch-stale {
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgb(var(--stale) / 0.16) 0 6px,
+      transparent 6px 12px
+    );
+  }
+
+  .hatch-unavailable {
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgb(var(--unavailable) / 0.16) 0 6px,
+      transparent 6px 12px
+    );
+  }
 }
 
-/* Card hover effect */
-.card-hover {
-  transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+/* First-out flash: a tile that just got worse flashes briefly, like an
+ * annunciator panel announcing a new alarm. Skipped under reduced motion. */
+@keyframes first-out {
+  0%, 50%, 100% { box-shadow: 0 0 0 0 transparent; }
+  25%, 75% { box-shadow: 0 0 0 3px currentColor; }
 }
 
-.card-hover:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.first-out {
+  animation: first-out 1.2s ease-in-out 2;
 }
 
-.dark .card-hover:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+@media (prefers-reduced-motion: reduce) {
+  .first-out {
+    animation: none;
+  }
 }
