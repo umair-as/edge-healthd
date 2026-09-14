@@ -1,5 +1,6 @@
 import { Card } from '../components/Card';
 import { ProgressBar } from '../components/ProgressBar';
+import { StatusBadge } from '../components/StatusBadge';
 import { Metric, MetricRow } from '../components/Metric';
 import { healthState } from '../state/signals';
 
@@ -53,14 +54,25 @@ export function Resources() {
           <div class="space-y-4">
             {storage.map((mount) => (
               <div key={mount.mount}>
-                <ProgressBar
-                  value={mount.used_pct}
-                  label={mount.mount}
-                  thresholds={{ warn: 80, crit: 95 }}
-                />
+                {mount.available !== false && mount.used_pct !== undefined ? (
+                  <ProgressBar
+                    value={mount.used_pct}
+                    label={mount.mount}
+                    thresholds={{ warn: 80, crit: 95 }}
+                  />
+                ) : (
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{mount.mount}</span>
+                    <StatusBadge severity="unavailable" size="sm" />
+                  </div>
+                )}
                 <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                   <span>{mount.fs || 'unknown'}</span>
-                  <span>{mount.avail_mb} MB available</span>
+                  <span>
+                    {mount.available !== false && mount.avail_mb !== undefined
+                      ? `${mount.avail_mb} MB available`
+                      : 'Could not be read'}
+                  </span>
                 </div>
               </div>
             ))}
@@ -74,6 +86,15 @@ export function Resources() {
           <div class="space-y-3">
             {thermal.map((sensor) => {
               const temp = sensor.temp_c;
+              if (sensor.available === false || temp === undefined) {
+                return (
+                  <div key={sensor.sensor} class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{sensor.sensor}</span>
+                    <StatusBadge severity="unavailable" size="sm" />
+                  </div>
+                );
+              }
+
               let colorClass = 'text-severity-ok';
               if (temp >= 80) {
                 colorClass = 'text-severity-crit';

@@ -12,13 +12,30 @@ import os
 import random
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-def timestamp_now() -> str:
-    """Return ISO 8601 timestamp in UTC."""
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+SCENARIOS = ["healthy", "degraded", "critical", "blind"]
+
+# Roll-up ranking from edge.health.state v1.1: stale/unavailable are
+# loss-of-observability states and sit between ok and warn.
+SEVERITY_RANK = {"unknown": 0, "ok": 1, "stale": 2, "unavailable": 3, "warn": 4, "crit": 5}
+
+
+def worst_of(*severities: str) -> str:
+    return max(severities, key=lambda s: SEVERITY_RANK[s])
+
+
+def timestamp_now(offset_sec: int = 0) -> str:
+    """Return ISO 8601 timestamp in UTC, optionally shifted into the past."""
+    ts = datetime.now(timezone.utc) - timedelta(seconds=offset_sec)
+    return ts.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def freshness(stale: bool = False) -> dict:
+    """Per-section freshness; a stale section was last collected well in the past."""
+    return {"collected_at": timestamp_now(900 if stale else 0), "stale": stale}
 
 
 def generate_device() -> dict:
@@ -48,7 +65,8 @@ def generate_boot(scenario: str) -> dict:
         "uptime": uptime,
         "boot_ok": boot_ok,
         "boot_fail_count": 0 if boot_ok else random.randint(1, 3),
-        "last_reboot_reason": None if boot_ok else "watchdog"
+        "last_reboot_reason": None if boot_ok else "watchdog",
+        **freshness(),
     }
 
 
@@ -97,14 +115,15 @@ def generate_services(scenario: str) -> dict:
 
     return {
         "overall": overall,
-        "units": units
+        "units": units,
+        **freshness(),
     }
 
 
 def generate_resources(scenario: str) -> dict:
     """Generate resource metrics."""
     # CPU load
-    load_base = 0.5 if scenario == "healthy" else (1.5 if scenario == "degraded" else 3.0)
+    load_base = 0.5 if scenario in ("healthy", "blind") else (1.5 if scenario == "degraded" else 3.0)
     cpu = {
         "load1": round(load_base + random.uniform(-0.2, 0.5), 2),
         "load5": round(load_base + random.uniform(-0.1, 0.3), 2),
@@ -113,13 +132,13 @@ def generate_resources(scenario: str) -> dict:
 
     # Memory
     total_mb = 4096
-    used_pct = 45 if scenario == "healthy" else (75 if scenario == "degraded" else 92)
+    used_pct = 45 if scenario in ("healthy", "blind") else (75 if scenario == "degraded" else 92)
     used_mb = int(total_mb * used_pct / 100)
 
     memory = {
         "mem_total_mb": total_mb,
         "mem_used_mb": used_mb,
-        "swap_used_mb": 0 if scenario == "healthy" else random.randint(50, 200),
+        "swap_used_mb": 0 if scenario in ("healthy", "blind") else random.randint(50, 200),
     }
 
     # Storage
@@ -127,22 +146,27 @@ def generate_resources(scenario: str) -> dict:
         {
             "mount": "/",
             "fs": "ext4",
-            "used_pct": 35 if scenario == "healthy" else (75 if scenario == "degraded" else 95),
+            "available": True,
+            "used_pct": 35 if scenario in ("healthy", "blind") else (75 if scenario == "degraded" else 95),
             "avail_mb": 2048,
         },
-        {
+        # blind: an unreadable mount omits its numeric fields instead of reporting 0
+        {"mount": "/data", "fs": "ext4", "available": False} if scenario == "blind" else {
             "mount": "/data",
             "fs": "ext4",
+            "available": True,
             "used_pct": 20,
             "avail_mb": 8192,
         },
     ]
 
     # Thermal
-    temp_base = 45 if scenario == "healthy" else (65 if scenario == "degraded" else 82)
+    temp_base = 45 if scenario in ("healthy", "blind") else (65 if scenario == "degraded" else 82)
     thermal = [
-        {"sensor": "cpu_thermal", "temp_c": round(temp_base + random.uniform(-2, 5), 1)},
-        {"sensor": "gpu_thermal", "temp_c": round(temp_base - 5 + random.uniform(-2, 5), 1)},
+        {"sensor": "cpu_thermal", "available": True, "temp_c": round(temp_base + random.uniform(-2, 5), 1)},
+        # blind: a dead sensor omits temp_c
+        {"sensor": "gpu_thermal", "available": False} if scenario == "blind" else
+        {"sensor": "gpu_thermal", "available": True, "temp_c": round(temp_base - 5 + random.uniform(-2, 5), 1)},
     ]
 
     # Network
@@ -154,7 +178,7 @@ def generate_resources(scenario: str) -> dict:
             "tx_bytes": random.randint(500000, 50000000),
             "rx_packets": random.randint(10000, 1000000),
             "tx_packets": random.randint(5000, 500000),
-            "rx_dropped": random.randint(0, 10) if scenario != "healthy" else 0,
+            "rx_dropped": random.randint(0, 10) if scenario in ("degraded", "critical") else 0,
             "tx_dropped": 0,
             "rx_err": random.randint(0, 5) if scenario == "critical" else 0,
             "tx_err": 0,
@@ -188,6 +212,7 @@ def generate_resources(scenario: str) -> dict:
         "storage": storage,
         "thermal": thermal,
         "network": network,
+        **freshness(),
     }
 
 
@@ -196,7 +221,7 @@ def generate_time_sync(scenario: str) -> dict:
     ntp_state = "locked" if scenario != "critical" else "free_running"
 
     rtc_voltage_mv = (
-        2950 if scenario == "healthy"
+        2950 if scenario in ("healthy", "blind")
         else 2650 if scenario == "degraded"
         else 2200  # critical — low battery
     )
@@ -214,7 +239,6 @@ def generate_time_sync(scenario: str) -> dict:
             "interface": None,
             "offset_ns": None,
             "rms_ns": None,
-            "state": None,
             "last_sync_at": None,
             "role": None,
         },
@@ -224,6 +248,7 @@ def generate_time_sync(scenario: str) -> dict:
             "voltage_mv": rtc_voltage_mv,
             "drift_sec": round(random.uniform(-2.0, 2.0), 1),
         },
+        **freshness(stale=scenario == "blind"),
     }
 
 
@@ -238,12 +263,17 @@ def generate_update(scenario: str) -> dict:
             "result": "success",
             "detail": None,
         },
+        **freshness(),
     }
 
 
 def generate_journal(scenario: str) -> dict:
     """Generate journal status."""
-    if scenario == "healthy":
+    return {**_journal_body(scenario), **freshness()}
+
+
+def _journal_body(scenario: str) -> dict:
+    if scenario in ("healthy", "blind"):
         return {"overall": "ok", "error_count": 0, "recent_errors": []}
     elif scenario == "degraded":
         return {
@@ -266,44 +296,79 @@ def generate_journal(scenario: str) -> dict:
         }
 
 
-def generate_summary(services: dict, resources: dict, time_sync: dict, journal: dict) -> dict:
-    """Generate overall summary from components."""
-    severities = [
-        services["overall"],
-        time_sync["overall"],
-        journal["overall"],
+def generate_crash(scenario: str) -> dict:
+    """Generate crash (pstore) status; critical carries an unacknowledged panic."""
+    if scenario != "critical":
+        return {"present": False, "artifact_count": 0, "artifacts": [], "acknowledged": False,
+                "source": None, "last_panic_at": None, "fingerprint": None, **freshness()}
+
+    panic_at = timestamp_now(1800)
+    artifacts = [
+        {"name": "dmesg-ramoops-0", "size_bytes": 16384, "mtime": panic_at},
+        {"name": "console-ramoops-0", "size_bytes": 4096, "mtime": panic_at},
     ]
+    return {
+        "present": True,
+        "source": "pstore",
+        "last_panic_at": panic_at,
+        "fingerprint": "9f3a1c7e5b2d4086",
+        "artifact_count": len(artifacts),
+        "artifacts": artifacts,
+        "acknowledged": False,
+        **freshness(),
+    }
 
-    # Check resources
-    if resources["memory"]["mem_used_mb"] / resources["memory"]["mem_total_mb"] > 0.9:
-        severities.append("crit")
-    elif resources["memory"]["mem_used_mb"] / resources["memory"]["mem_total_mb"] > 0.7:
-        severities.append("warn")
 
-    # Determine overall
-    if "crit" in severities:
-        overall = "crit"
-    elif "warn" in severities:
-        overall = "warn"
-    else:
-        overall = "ok"
+def generate_summary(boot: dict, services: dict, resources: dict, time_sync: dict,
+                     update: dict, journal: dict, crash: dict) -> dict:
+    """Roll up per-domain severities the way the daemon's aggregator does."""
+    mem = resources["memory"]
+    mem_ratio = mem["mem_used_mb"] / mem["mem_total_mb"]
+    resources_sev = "crit" if mem_ratio > 0.9 else ("warn" if mem_ratio > 0.7 else "ok")
+    blind_elements = [m for m in resources.get("storage", []) + resources.get("thermal", [])
+                      if not m["available"]]
+    if blind_elements:
+        resources_sev = worst_of(resources_sev, "unavailable")
 
-    # Build reasons
+    crash_sev = "ok"
+    if crash["present"] and not crash["acknowledged"]:
+        crash_sev = "crit"
+
+    domains = {
+        "boot": "ok" if boot["boot_ok"] else "crit",
+        "services": services["overall"],
+        "resources": resources_sev,
+        "time_sync": time_sync["overall"],
+        "update": update["overall"],
+        "journal": journal["overall"],
+        "crash": crash_sev,
+    }
+    # A stale section is raised to at least "stale", retaining a worse last-known value.
+    sections = {"boot": boot, "services": services, "resources": resources, "time_sync": time_sync,
+                "update": update, "journal": journal, "crash": crash}
+    for name, section in sections.items():
+        if section.get("stale"):
+            domains[name] = worst_of(domains[name], "stale")
+
+    overall = worst_of(*domains.values())
+
     reasons = []
-    if overall == "ok":
-        reasons = ["all_ok"]
-    else:
-        if services["overall"] != "ok":
-            reasons.append("service_degraded")
-        if time_sync["overall"] != "ok":
-            reasons.append("time_sync_issue")
-        if resources["memory"]["mem_used_mb"] / resources["memory"]["mem_total_mb"] > 0.7:
-            reasons.append("high_memory")
-        if journal["overall"] != "ok":
-            reasons.append("journal_errors")
+    if services["overall"] != "ok":
+        reasons.append("service_degraded")
+    if time_sync["overall"] != "ok":
+        reasons.append("time_sync_issue")
+    if mem_ratio > 0.7:
+        reasons.append("high_memory")
+    if journal["overall"] in ("warn", "crit"):
+        reasons.append("journal_errors")
+    if crash_sev == "crit":
+        reasons.append("kernel_panic_detected")
+    if crash["present"]:
+        reasons.append("pstore_records_present")
 
     return {
         "severity": overall,
+        "domains": domains,
         "reasons": reasons,
         "notes": None,
     }
@@ -324,11 +389,12 @@ def generate_state(scenario: str = "healthy") -> dict:
     time_sync = generate_time_sync(scenario)
     update = generate_update(scenario)
     journal = generate_journal(scenario)
-    summary = generate_summary(services, resources, time_sync, journal)
+    crash = generate_crash(scenario)
+    summary = generate_summary(boot, services, resources, time_sync, update, journal, crash)
 
     return {
         "schema": "edge.health.state",
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generated_at": timestamp_now(),
         "cycle": _cycle_counter,
         "device": device,
@@ -338,6 +404,7 @@ def generate_state(scenario: str = "healthy") -> dict:
         "time_sync": time_sync,
         "update": update,
         "journal": journal,
+        "crash": crash,
         "summary": summary,
     }
 
@@ -346,15 +413,15 @@ def main():
     parser = argparse.ArgumentParser(description="Generate mock edge health state")
     parser.add_argument("--output", "-o", default="/data/edge/health/state.json",
                         help="Output file path")
-    parser.add_argument("--scenario", "-s", choices=["healthy", "degraded", "critical"],
-                        default="healthy", help="Health scenario")
+    parser.add_argument("--scenario", "-s", choices=SCENARIOS, default="healthy",
+                        help="Health scenario (blind = stale/unavailable observability loss)")
     parser.add_argument("--interval", "-i", type=int, default=0,
                         help="Regenerate interval in seconds (0 = one-shot)")
     parser.add_argument("--rotate", "-r", action="store_true",
                         help="Rotate through scenarios")
     args = parser.parse_args()
 
-    scenarios = ["healthy", "degraded", "critical"]
+    scenarios = SCENARIOS
     scenario_idx = 0
 
     output_path = Path(args.output)

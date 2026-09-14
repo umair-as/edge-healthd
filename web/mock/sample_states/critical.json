@@ -193,6 +193,28 @@
     "collected_at": "2026-07-20T09:00:00Z",
     "stale": false
   },
+  "crash": {
+    "present": true,
+    "source": "pstore",
+    "last_panic_at": "2024-01-15T11:28:40Z",
+    "fingerprint": "9f3a1c7e5b2d4086",
+    "artifact_count": 2,
+    "artifacts": [
+      {
+        "name": "dmesg-ramoops-0",
+        "size_bytes": 16384,
+        "mtime": "2024-01-15T11:28:40Z"
+      },
+      {
+        "name": "console-ramoops-0",
+        "size_bytes": 4096,
+        "mtime": "2024-01-15T11:28:40Z"
+      }
+    ],
+    "acknowledged": false,
+    "collected_at": "2026-07-20T09:00:00Z",
+    "stale": false
+  },
   "summary": {
     "severity": "crit",
     "domains": {
@@ -202,14 +224,16 @@
       "time_sync": "warn",
       "update": "crit",
       "journal": "crit",
-      "crash": "ok"
+      "crash": "crit"
     },
     "reasons": [
       "service:edge-ota.service:failed",
       "high_memory",
       "high_storage",
       "time_sync_issue",
-      "update_failed"
+      "update_failed",
+      "kernel_panic_detected",
+      "pstore_records_present"
     ],
     "notes": "Critical: OTA service failed, disk nearly full, NTP not synced"
   },
