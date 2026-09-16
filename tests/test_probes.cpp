@@ -352,3 +352,101 @@ TEST_CASE("CrashProbe: fingerprint stable when only console artifact changes",
 
     std::filesystem::remove_all(base, ec);
 }
+
+namespace {
+
+std::filesystem::path write_last_update(const std::string& test_name,
+                                        const std::string& body) {
+    const auto dir = std::filesystem::temp_directory_path() /
+                     ("edge-healthd-update-" + test_name);
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    std::filesystem::create_directories(dir, ec);
+    std::ofstream(dir / "last_update.json") << body;
+    return dir;
+}
+
+} // namespace
+
+// Without a D-Bus connection the probe takes the file fallback, which is what
+// runs on systems without RAUC.
+TEST_CASE("UpdateProbe fallback reads last_update.json", "[probes][update]") {
+    const auto dir = write_last_update("ok", R"({
+        "id": "1.2.3/42",
+        "installed_at": "2026-03-03T09:19:39Z",
+        "result": "success",
+        "detail": "edge-gateway"
+    })");
+    auto config = Config::defaults();
+    UpdateProbe probe(config, nullptr, dir);
+
+    auto status = probe.collect();
+    REQUIRE(status.has_value());
+    CHECK(status->overall == Severity::Ok);
+    CHECK_FALSE(status->active_slot.has_value());
+    REQUIRE(status->last_update.has_value());
+    CHECK(status->last_update->id == "1.2.3/42");
+    CHECK(status->last_update->result == UpdateResult::Success);
+    CHECK(status->last_update->detail == "edge-gateway");
+    // The recorded install time, not the time of collection.
+    REQUIRE(status->last_update->installed_at.has_value());
+    CHECK(std::chrono::system_clock::to_time_t(*status->last_update->installed_at) ==
+          1772529579);
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("UpdateProbe fallback drops a malformed install time", "[probes][update]") {
+    const auto dir = write_last_update("bad-ts", R"({
+        "id": "1.2.3", "installed_at": "last tuesday", "result": "success"
+    })");
+    auto config = Config::defaults();
+    UpdateProbe probe(config, nullptr, dir);
+
+    auto status = probe.collect();
+    REQUIRE(status.has_value());
+    REQUIRE(status->last_update.has_value());
+    CHECK(status->last_update->id == "1.2.3");
+    CHECK_FALSE(status->last_update->installed_at.has_value());
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("UpdateProbe fallback warns on a failed update", "[probes][update]") {
+    const auto dir = write_last_update("failed", R"({"id": "2.0.0", "result": "failed"})");
+    auto config = Config::defaults();
+    UpdateProbe probe(config, nullptr, dir);
+
+    auto status = probe.collect();
+    REQUIRE(status.has_value());
+    CHECK(status->overall == Severity::Warn);
+    REQUIRE(status->last_update.has_value());
+    CHECK(status->last_update->result == UpdateResult::Failed);
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("UpdateProbe fallback without usable update data", "[probes][update]") {
+    const auto dir = std::filesystem::temp_directory_path() / "edge-healthd-update-missing";
+    std::filesystem::remove_all(dir);
+    auto config = Config::defaults();
+
+    SECTION("missing file reports unknown, not ok") {
+        UpdateProbe probe(config, nullptr, dir);
+        auto status = probe.collect();
+        REQUIRE(status.has_value());
+        CHECK(status->overall == Severity::Unknown);
+        CHECK_FALSE(status->last_update.has_value());
+        CHECK_FALSE(status->active_slot.has_value());
+    }
+
+    SECTION("corrupt file is ignored and reports unknown") {
+        const auto bad = write_last_update("corrupt", "{not json");
+        UpdateProbe probe(config, nullptr, bad);
+        auto status = probe.collect();
+        REQUIRE(status.has_value());
+        CHECK(status->overall == Severity::Unknown);
+        CHECK_FALSE(status->last_update.has_value());
+        std::filesystem::remove_all(bad);
+    }
+}

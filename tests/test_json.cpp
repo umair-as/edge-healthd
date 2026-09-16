@@ -243,3 +243,23 @@ TEST_CASE("JSON serialize_pretty produces indented output", "[json]") {
     // Pretty should have newlines
     CHECK(pretty.find('\n') != std::string::npos);
 }
+
+TEST_CASE("json::parse_time accepts the snapshot timestamp format", "[json]") {
+    auto tp = json::parse_time("2026-03-03T09:19:39Z");
+    REQUIRE(tp.has_value());
+    CHECK(std::chrono::system_clock::to_time_t(*tp) == 1772529579);
+
+    // Round-trips with the serializer's own format.
+    LastUpdate update;
+    update.installed_at = *tp;
+    nlohmann::json j = update;
+    CHECK(j["installed_at"] == "2026-03-03T09:19:39Z");
+}
+
+TEST_CASE("json::parse_time rejects malformed timestamps", "[json]") {
+    CHECK_FALSE(json::parse_time("").has_value());
+    CHECK_FALSE(json::parse_time("yesterday").has_value());
+    CHECK_FALSE(json::parse_time("2026-03-03 09:19:39").has_value());
+    CHECK_FALSE(json::parse_time("2026-03-03T09:19:39Z trailing").has_value());
+    CHECK_FALSE(json::parse_time("2026-03-03T09:19:39+01:00").has_value());
+}

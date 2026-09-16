@@ -78,6 +78,7 @@ Default config path: `/etc/edge/healthd.conf` (JSON with `//` line comments). Ev
 - `monitored_interfaces` — when empty, all non-loopback interfaces are reported automatically
 - `snapshot_file` — `/run/health/state.json` (tmpfs)
 - `state_dir` — `/data/edge/health` (persistent boot/update state; survives reboots)
+- Update state without RAUC — `/data/edge/update/last_update.json`, written by whatever installs updates: `{"id": "1.2.3", "installed_at": "2026-03-03T09:19:39Z", "result": "success|failed", "detail": "..."}` (`result: failed` raises `warn`; `installed_at` must be UTC in exactly that form)
 
 ### Polling intervals and scheduling
 

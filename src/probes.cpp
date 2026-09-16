@@ -7,6 +7,7 @@
 #include "ethtool_link.hpp"
 #include "journal.hpp"
 #include "journal_reader.hpp"
+#include "json.hpp"
 #include "log.hpp"
 #include "netlink_monitor.hpp"
 
@@ -773,21 +774,19 @@ ProbeResult<UpdateStatus> UpdateProbe::collect() const {
     }
 
     // Try live RAUC D-Bus data first; fall back to static file if unavailable.
+    // Only RAUC knows the booted slot, so active_slot stays unset on fallback.
     if (!collect_rauc_update(status)) {
-        status.active_slot = detect_active_slot();
         status.last_update = load_last_update();
 
-        if (status.last_update && status.last_update->result == UpdateResult::Failed) {
+        if (!status.last_update) {
+            // No RAUC and no usable state file: nothing is known about updates.
+            status.overall = Severity::Unknown;
+        } else if (status.last_update->result == UpdateResult::Failed) {
             status.overall = Severity::Warn;
         }
     }
 
     return status;
-}
-
-std::optional<std::string> UpdateProbe::detect_active_slot() const {
-    // Placeholder until a D-Bus integration (e.g., RAUC) is added.
-    return std::nullopt;
 }
 
 std::optional<LastUpdate> UpdateProbe::load_last_update() const {
@@ -807,9 +806,8 @@ std::optional<LastUpdate> UpdateProbe::load_last_update() const {
         }
 
         if (json.contains("installed_at")) {
-            // Parse ISO 8601 timestamp
-            // Simplified - production would use proper parsing
-            update.installed_at = std::chrono::system_clock::now();
+            // A malformed timestamp is dropped rather than guessed.
+            update.installed_at = edge::json::parse_time(json["installed_at"].get<std::string>());
         }
 
         if (json.contains("result")) {

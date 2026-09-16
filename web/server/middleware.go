@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -205,27 +204,4 @@ func isPrivateIP(ip net.IP) bool {
 
 	// Also check with net.IP methods for completeness
 	return ip.IsPrivate()
-}
-
-// isPrivateIPString is a helper that takes a string IP
-func isPrivateIPString(ipStr string) bool {
-	// Strip port if present
-	if idx := strings.LastIndex(ipStr, ":"); idx != -1 {
-		// Check if this looks like IPv6
-		if strings.Count(ipStr, ":") > 1 {
-			// IPv6 with brackets
-			if strings.HasPrefix(ipStr, "[") {
-				ipStr = strings.TrimPrefix(ipStr, "[")
-				if idx := strings.Index(ipStr, "]"); idx != -1 {
-					ipStr = ipStr[:idx]
-				}
-			}
-		} else {
-			// IPv4 with port
-			ipStr = ipStr[:idx]
-		}
-	}
-
-	ip := net.ParseIP(ipStr)
-	return isPrivateIP(ip)
 }

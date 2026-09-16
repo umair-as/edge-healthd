@@ -4,8 +4,10 @@
 #include "json.hpp"
 
 #include <cmath>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <string>
 
 namespace edge {
 
@@ -392,6 +394,20 @@ std::string serialize(const SnapshotState& state) {
 std::string serialize_pretty(const SnapshotState& state, int indent) {
     nlohmann::json j = state;
     return j.dump(indent, ' ', false, nlohmann::json::error_handler_t::replace);
+}
+
+std::optional<std::chrono::system_clock::time_point> parse_time(std::string_view text) {
+    const std::string buf(text);
+    std::tm tm{};
+    const char* end = strptime(buf.c_str(), "%Y-%m-%dT%H:%M:%SZ", &tm);
+    if (end == nullptr || *end != '\0') {
+        return std::nullopt;
+    }
+    const time_t t = timegm(&tm);
+    if (t == static_cast<time_t>(-1)) {
+        return std::nullopt;
+    }
+    return std::chrono::system_clock::from_time_t(t);
 }
 
 } // namespace json
