@@ -242,7 +242,7 @@ LastUpdate   { id, result, installed_at?, detail? }
 
 Polling is decoupled via `update_check_interval_sec` (default 1800 s). The daemon also subscribes to `RAUC.Installer.Completed` and forces an immediate refresh on signal — so a freshly installed bundle is reflected in the next snapshot without waiting for the poll interval.
 
-When RAUC is not present on the platform, `overall` is `unknown` and `last_update` is omitted.
+When RAUC is not present on the platform, `active_slot` is omitted and the daemon falls back to a `last_update.json` state file (see [usage](usage.md#key-defaults)). With no usable file, `overall` is `unknown` and `last_update` is omitted; a recorded `failed` result is `warn`. A malformed `installed_at` in that file is omitted rather than guessed.
 
 ### 6.7 `journal`
 

@@ -7,6 +7,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
+#include <optional>
+#include <string_view>
+
 namespace edge {
 
 // ADL-visible conversions for nlohmann::json.
@@ -36,6 +40,11 @@ namespace json {
 
 [[nodiscard]] std::string serialize(const SnapshotState& state);
 [[nodiscard]] std::string serialize_pretty(const SnapshotState& state, int indent = 2);
+
+// Parse a UTC timestamp in the snapshot's own format ("2026-03-03T09:19:39Z").
+// Returns nullopt for anything else, including trailing characters.
+[[nodiscard]] std::optional<std::chrono::system_clock::time_point>
+parse_time(std::string_view text);
 
 } // namespace json
 

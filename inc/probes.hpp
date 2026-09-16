@@ -232,8 +232,8 @@ private:
 
 // -----------------------------------------------------------------------------
 // UpdateProbe
-// Gathers: Software version, active slot (A/B), last update result
-// Sources: custom state file (future: RAUC D-Bus)
+// Gathers: active slot (A/B), last update result
+// Sources: RAUC D-Bus; without RAUC, last_update.json in the probe's state dir
 // -----------------------------------------------------------------------------
 
 class UpdateProbe {
@@ -253,7 +253,6 @@ private:
     sdbus::IConnection* dbus_;
     std::filesystem::path state_dir_;
 
-    [[nodiscard]] std::optional<std::string> detect_active_slot() const;
     [[nodiscard]] std::optional<LastUpdate> load_last_update() const;
     // Queries de.pengutronix.rauc D-Bus; returns true and populates status if RAUC is available.
     [[nodiscard]] bool collect_rauc_update(UpdateStatus& status) const;

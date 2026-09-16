@@ -5,6 +5,7 @@
 #include "config.hpp"
 #include "journal.hpp"
 #include "journal_reader.hpp"
+#include "json.hpp"
 
 #include <cctype>
 #include <chrono>
@@ -417,16 +418,7 @@ bool UpdateProbe::collect_rauc_update(UpdateStatus& status) const {
             }
 
             // Parse activated timestamp (ISO 8601: "2026-03-03T09:19:39Z")
-            auto ts = prop_str(props, "activated.timestamp");
-            if (!ts.empty()) {
-                struct tm tm{};
-                if (strptime(ts.c_str(), "%Y-%m-%dT%H:%M:%SZ", &tm) != nullptr) {
-                    auto t = timegm(&tm);
-                    if (t != static_cast<time_t>(-1)) {
-                        update.installed_at = std::chrono::system_clock::from_time_t(t);
-                    }
-                }
-            }
+            update.installed_at = json::parse_time(prop_str(props, "activated.timestamp"));
 
             // Determine result from boot-status and slot status
             auto boot_status = prop_str(props, "boot-status");
