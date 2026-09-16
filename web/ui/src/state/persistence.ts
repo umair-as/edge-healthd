@@ -1,34 +1,34 @@
 import type { HealthState } from '../types/health';
 
+// The last snapshot is cached so the page can show something (clearly marked
+// as cached) when the gateway is unreachable. The cached payload is treated
+// as untrusted and re-validated on load, like network data.
+
 const STORAGE_KEY = 'edge-healthd-state';
 
-// Save state to localStorage for offline viewing
-export function persistState(state: HealthState): void {
+interface Cached {
+  state: HealthState;
+  firstSeenAt: number;
+}
+
+export function persistSnapshot(state: HealthState, firstSeenAt: number): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state, firstSeenAt } satisfies Cached));
   } catch {
-    // Storage might be full or disabled, silently fail
+    // Storage full or disabled: caching is best-effort.
   }
 }
 
-// Load persisted state from localStorage
-export function loadPersistedState(): HealthState | null {
+export function loadCachedSnapshot(): { state: unknown; firstSeenAt: number } | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as HealthState;
-    }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const { state, firstSeenAt } = parsed as Partial<Cached>;
+    if (state === undefined || typeof firstSeenAt !== 'number') return null;
+    return { state, firstSeenAt };
   } catch {
-    // Invalid JSON or storage error
-  }
-  return null;
-}
-
-// Clear persisted state
-export function clearPersistedState(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Silently fail
+    return null;
   }
 }

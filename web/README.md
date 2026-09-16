@@ -1,13 +1,18 @@
 # Edge-Healthd Web UI
 
-A lightweight, real-time web dashboard for monitoring edge device health without SSH, cloud connectivity, or authentication.
+A single-page health check for one edge gateway: is it OK, and if not, what is wrong, since when, and can the data be trusted? It renders edge-healthd's snapshot (`state.json`) live, without SSH, cloud connectivity, or authentication.
 
 ## Overview
 
-The Web UI provides a local dashboard that displays health status from edge-healthd's state.json file. It's designed for:
-- On-site technicians with physical access
-- Quick health checks without SSH
-- Mobile-friendly viewing from any browser on the local network
+The page is built for an on-site technician with a phone or laptop on the local network, and follows a "dark cockpit" convention: when everything is healthy nothing is lit, so whatever needs attention stands out.
+
+- **Verdict** — one sentence naming what needs attention ("Services needs attention", "Can't see 2 domains"), with the daemon's reason codes and when the data last changed.
+- **Annunciator** — one fixed tile per domain (boot, services, resources, time sync, update, journal, crash). Faults light up in their severity color; loss of visibility (`stale`, `unavailable`) is hatched rather than colored, because "can't see it" is not a point on the health scale.
+- **Domain details** — problems first and expanded; healthy domains collapse to a one-line summary. Unit log excerpts, storage/memory usage, temperatures, network links, time sources, update slot, journal errors, and crash records live here.
+- **Honest data** — unreadable mounts and sensors are shown as unavailable (never blank or zero), stale sections are labeled, and a banner appears when the gateway is unreachable, a cached snapshot is shown, or no new snapshot has arrived for three collection cycles. Section ages are computed on the device's own clock, so a gateway with a wrong clock still shows correct ages.
+- Usage bars are colored only when the daemon flagged the reading; the UI never applies thresholds of its own.
+
+Deep links open a domain directly (`/#services`); paths from the earlier multi-page UI (`/services`, `/network`, …) redirect to the matching domain.
 
 ## Stack
 
@@ -17,11 +22,13 @@ The Web UI provides a local dashboard that displays health status from edge-heal
 
 ## Features
 
-- Real-time health monitoring via WebSocket
+- Live updates over WebSocket, with HTTP polling while the socket is down; the header shows which (Live / Polling / Unreachable)
+- Every payload validated at the boundary; a malformed or future-major snapshot shows a clear message instead of a blank page
 - HTTPS with a self-signed cert in the shipped systemd unit; plain HTTP when `-tls-cert`/`-tls-key` are omitted (development)
-- Dark/light theme with system preference detection
-- Offline support with localStorage persistence
-- Mobile-responsive design
+- Light, dark, or follow-the-system theme; WCAG AA contrast for text and every severity color in both themes
+- Accessible by keyboard and screen reader: severity is conveyed by shape and text as well as color, disclosure sections expose their state, motion respects `prefers-reduced-motion`
+- No external requests (system fonts, no CDNs), so it works on an offline gateway and under the server's strict CSP
+- Last snapshot cached in localStorage and clearly marked when shown offline
 - Security headers, RFC1918 source-IP allowlist, CSRF guard on mutating endpoints
 
 ## Building
@@ -67,11 +74,11 @@ The easiest way to develop is with Docker Compose:
 
 ```bash
 cd web/docker
-docker-compose up
+docker compose up
 
 # Frontend dev server: http://localhost:5173 (HMR enabled)
-# Go server: http://localhost:8080
-# Mock data is auto-generated
+# Go server: http://localhost:8080 (override with SERVER_PORT=...)
+# Mock data is regenerated every 5 s; pick a scenario with MOCK_SCENARIO=critical
 ```
 
 ### Manual Development
@@ -92,6 +99,27 @@ npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
+
+`--rotate` cycles through the `healthy`, `degraded`, `critical`, and `blind` scenarios; pin one with
+`--scenario <name>`. `blind` exercises loss of observability (a stale section, an unreadable mount,
+a dead thermal sensor), and `critical` carries an unacknowledged kernel panic. Deterministic
+fixtures for each scenario live in `mock/sample_states/` and can be passed to the server's `-state` flag.
+
+### Checks
+
+```bash
+cd web/ui
+npm run lint     # eslint, including jsx-a11y rules
+npm test         # unit + component tests (Vitest, Testing Library, jsdom)
+npm run build    # type-check and production build
+npm run size     # gzip bundle budget (50 kB)
+npm run check    # all of the above, as CI runs them
+
+cd web/server
+go test ./...    # server middleware and WebSocket upgrade path
+```
+
+Component tests render the same schema-validated fixtures from `mock/sample_states/` that CI validates against the snapshot schema.
 
 ## Configuration
 
@@ -185,7 +213,7 @@ journalctl -u edge-healthd-ui -f
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Bundle size (gzip) | < 500KB | ~50KB |
+| Bundle size (gzip) | < 50 kB (enforced in CI) | ~25 kB |
 | Server memory | < 30MB | ~15MB |
 | First paint | < 500ms | ~200ms |
 | CPU idle | < 1% | <0.5% |

@@ -1,44 +1,46 @@
 /** @type {import('tailwindcss').Config} */
+
+// Colors are CSS variables (see src/index.css) so one set of utility classes
+// serves both themes. Values are space-separated RGB channels, which keeps
+// Tailwind's opacity modifiers (e.g. bg-warn/15) working.
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{ts,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Fira Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['Fira Code', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        // System stacks only: no external font requests (the server's CSP
+        // allows fonts from 'self' only, and gateways are often offline).
+        sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Ubuntu', 'Cantarell', 'Noto Sans', 'sans-serif'],
+        mono: ['ui-monospace', 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace'],
       },
       colors: {
-        // UI accent — desert amber
-        'accent': '#f59e0b',           // amber-400  — active nav, highlights
-        'accent-dim': '#92400e',       // amber-900  — 10% tint backgrounds
-        'accent-muted': 'rgba(245,158,11,0.12)', // subtle bg for active items
+        // Surfaces and ink
+        bg: token('bg'),
+        panel: token('panel'),
+        raised: token('raised'),
+        line: token('line'),
+        ink: token('ink'),
+        'ink-muted': token('ink-muted'),
+        'ink-faint': token('ink-faint'),
+        focus: token('focus'),
 
-        // Severity colors (semantic — do not use for UI chrome)
-        'severity-ok': '#22c55e',      // green-500
-        'severity-warn': '#eab308',    // yellow-500
-        'severity-crit': '#ef4444',    // red-500
-        'severity-unknown': '#6b7280', // gray-500
-
-        // Dark mode — neutral grey palette
-        'dark-bg': '#141414',          // page background — near-black
-        'dark-surface': '#1e1e1e',     // sidebar / header — VS Code grey
-        'dark-card': '#242424',        // card surface
-        'dark-card-hover': '#2c2c2c',  // card hover
-        'dark-border': '#363636',      // border
-        'dark-border-subtle': '#2a2a2a', // barely-there border
+        // Severity (semantic only — never used for UI chrome). Amber and red are
+        // reserved for warn/crit, so interactive chrome uses `focus`, not amber.
+        ok: token('ok'),
+        warn: token('warn'),
+        crit: token('crit'),
+        unknown: token('unknown'),
+        // Loss-of-observability states, deliberately off the ok→crit hue ramp
+        stale: token('stale'),
+        unavailable: token('unavailable'),
       },
-      boxShadow: {
-        'card-dark': '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
-        'card-dark-hover': '0 4px 12px rgba(0,0,0,0.5)',
-      },
-      animation: {
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+      fontSize: {
+        eyebrow: ['0.6875rem', { lineHeight: '1rem', letterSpacing: '0.08em' }],
       },
     },
   },
   plugins: [],
-}
+};

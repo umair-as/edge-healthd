@@ -35,9 +35,13 @@
   ```bash
   python3 scripts/validate_schema.py /run/health/state.json
   ```
-- If `web/ui` changes:
+- If `web/ui` changes (lint, tests, build, bundle budget — what CI runs):
   ```bash
-  cd web/ui && npm run lint
+  cd web/ui && npm run check
+  ```
+- If `web/server` changes:
+  ```bash
+  cd web/server && go vet ./... && go test ./...
   ```
 
 ## Coding Rules

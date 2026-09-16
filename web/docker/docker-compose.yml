@@ -42,7 +42,8 @@ services:
     volumes:
       - ../mock:/app
       - mock-data:/data/edge/health
-    command: python generate_state.py --output /data/edge/health/state.json --interval 5
+    # MOCK_SCENARIO: healthy | degraded | critical | blind
+    command: python generate_state.py --output /data/edge/health/state.json --interval 5 --scenario ${MOCK_SCENARIO:-healthy}
 
 volumes:
   mock-data:
