@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   build-and-validate:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
@@ -81,7 +81,7 @@ jobs:
   # changes and dependency bumps get real signal (build-and-validate only covers
   # the C++ daemon).
   web-ui-build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: web/ui
@@ -115,7 +115,7 @@ jobs:
   # snapshot trigger. Its tests cover the middleware chain the browser talks
   # through (a broken WebSocket upgrade otherwise degrades silently to polling).
   web-server-test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: web/server
