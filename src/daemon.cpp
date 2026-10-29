@@ -91,6 +91,17 @@ bool watchdog_sleep(std::condition_variable_any& cv, std::stop_token st,
                        [&st] { return st.stop_requested(); });
 }
 
+bool prepare_state_dir(const std::filesystem::path& dir) {
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        log::warn("cannot create state directory " + dir.string() + ": " +
+                  ec.message() + "; running without persistent state");
+        return false;
+    }
+    return true;
+}
+
 } // namespace detail
 
 // -----------------------------------------------------------------------------
@@ -121,12 +132,7 @@ SnapshotDaemon::~SnapshotDaemon() {
 }
 
 std::optional<std::string> SnapshotDaemon::initialize() {
-    // Create state directory if needed
-    std::error_code ec;
-    std::filesystem::create_directories(config_.state_dir, ec);
-    if (ec) {
-        return "Failed to create state directory: " + ec.message();
-    }
+    (void)detail::prepare_state_dir(config_.state_dir);
 
     if (wakeup_fd_ < 0) {
         log::warn("eventfd creation failed; shutdown/trigger may be delayed up to collect_interval");
