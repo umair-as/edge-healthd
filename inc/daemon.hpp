@@ -15,6 +15,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -207,6 +208,14 @@ namespace detail {
 [[nodiscard]] bool watchdog_sleep(std::condition_variable_any& cv,
                                   std::stop_token st,
                                   std::chrono::nanoseconds timeout);
+
+// Create the state directory if needed. Returns false, after logging a
+// warning, when it cannot be created (a read-only root with the persistent
+// partition absent, for example). The daemon then keeps running: health
+// reporting matters most on exactly such a device, and every state reader and
+// writer already treats a missing or unwritable file as "no saved state".
+// Exposed for lifecycle tests.
+[[nodiscard]] bool prepare_state_dir(const std::filesystem::path& dir);
 
 } // namespace detail
 

@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
 #include <stop_token>
 #include <thread>
 
@@ -130,4 +131,23 @@ TEST_CASE("watchdog_sleep returns immediately if stop already requested",
 
     CHECK(stopped);
     CHECK(elapsed < 1s);
+}
+
+TEST_CASE("prepare_state_dir creates a missing state directory",
+          "[daemon][state]") {
+    const auto base = std::filesystem::temp_directory_path() /
+                      ("edge-healthd-state-" + std::to_string(::getpid()));
+    const auto dir = base / "edge" / "health";
+    std::filesystem::remove_all(base);
+
+    CHECK(detail::prepare_state_dir(dir));
+    CHECK(std::filesystem::is_directory(dir));
+    std::filesystem::remove_all(base);
+}
+
+TEST_CASE("prepare_state_dir reports an uncreatable directory without throwing",
+          "[daemon][state]") {
+    // /proc rejects mkdir for every user, root included, so this holds in CI
+    // containers too; it stands in for /data missing under a read-only root.
+    CHECK_FALSE(detail::prepare_state_dir("/proc/edge-healthd-test/edge/health"));
 }
